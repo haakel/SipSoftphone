@@ -116,11 +116,12 @@ public static class Program
         engine.Log += Console.WriteLine;
         if (!engine.Start()) return 1;
 
-        Console.WriteLine("commands: A=answer  R=reject  H=hangup  S=status  Q=quit");
+        Console.WriteLine("commands: A=answer  R=reject  H=hangup  M=toggle mute  O=toggle hold  S=status  Q=quit");
         var interactive = !Console.IsInputRedirected;
         if (!interactive)
             Console.WriteLine("[console] stdin redirected — running headless (events still fire, keys disabled)");
 
+        var muted = false;
         while (true)
         {
             if (!interactive)
@@ -139,10 +140,21 @@ public static class Program
             else if (k == ConsoleKey.A) { _ = engine.AnswerPendingAsync(); }
             else if (k == ConsoleKey.R) engine.RejectPending();
             else if (k == ConsoleKey.H) engine.Hangup();
+            else if (k == ConsoleKey.M)
+            {
+                muted = !muted;
+                engine.Audio.SetMuted(muted);
+                Console.WriteLine($"[console] muted={muted}");
+            }
+            else if (k == ConsoleKey.O)
+            {
+                var onHold = engine.ToggleHold();
+                Console.WriteLine($"[console] hold={onHold}");
+            }
             else if (k == ConsoleKey.S)
             {
                 var c = engine.CurrentCall;
-                Console.WriteLine($"status: reg={engine.Registration.Text} call={c.State} pending={c.RawNumber} sse={(engine.IsSseRunning ? engine.SseUrl : "off")}");
+                Console.WriteLine($"status: reg={engine.Registration.Text} call={c.State} pending={c.RawNumber} hold={c.IsOnHold} sse={(engine.IsSseRunning ? engine.SseUrl : "off")}");
             }
         }
 

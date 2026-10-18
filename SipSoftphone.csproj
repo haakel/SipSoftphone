@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>SipSoftphone</AssemblyName>
@@ -26,6 +27,14 @@
     <None Update="config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests\**" />
+    <Content Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+    <None Remove="tests\**" />
+    <Page Remove="tests\**" />
   </ItemGroup>
 
 </Project>

@@ -35,13 +35,30 @@ public sealed class AudioEngine : IDisposable
     private readonly List<short> _pending = new(FrameSamples * 4);
     private bool _running;
     private bool _micRunning;
+    private volatile bool _muted;
+    private float _micGain = 1f;
+    private float _speakerGain = 1f;
+    private long _rxPackets;
+    private long _txPackets;
 
     public bool IsRunning { get { lock (_sync) return _running; } }
     public bool IsMicRunning { get { lock (_sync) return _micRunning; } }
+    public bool IsMuted => _muted;
     public string? ActiveMicDevice { get; private set; }
     public string? ActiveSpeakerDevice { get; private set; }
+    public long RxPackets => Interlocked.Read(ref _rxPackets);
+    public long TxPackets => Interlocked.Read(ref _txPackets);
 
     public event Action<string>? Log;
+
+    public void SetMuted(bool muted)
+    {
+        _muted = muted;
+        Log?.Invoke(muted ? "[audio] mic muted" : "[audio] mic unmuted");
+    }
+
+    public void SetMicGain(float gain) => _micGain = Math.Clamp(gain, 0f, 2f);
+    public void SetSpeakerGain(float gain) => _speakerGain = Math.Clamp(gain, 0f, 2f);
 
     /// <summary>Attach playback + prepare. Safe to call before answer so no early RTP is lost.</summary>
     public void Attach(RTPSession session, AudioConfig cfg)
@@ -52,6 +69,8 @@ public sealed class AudioEngine : IDisposable
             _session = session;
             _rxHandler = OnAudioFrame;
             session.OnAudioFrameReceived += _rxHandler;
+            Interlocked.Exchange(ref _rxPackets, 0);
+            Interlocked.Exchange(ref _txPackets, 0);
             StartSpeaker(cfg);
             _running = true;
         }
@@ -173,9 +192,17 @@ public sealed class AudioEngine : IDisposable
     private void OnMicData(object? sender, WaveInEventArgs e)
     {
         if (e.BytesRecorded <= 0) return;
+        if (_muted) return;
 
         var samples = new short[e.BytesRecorded / 2];
         Buffer.BlockCopy(e.Buffer, 0, samples, 0, e.BytesRecorded);
+
+        var gain = _micGain;
+        if (gain is not 1f)
+        {
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] = (short)Math.Clamp(samples[i] * gain, short.MinValue, short.MaxValue);
+        }
 
         if (_micResampler != null)
             samples = _micResampler.Process(samples);
@@ -204,7 +231,10 @@ public sealed class AudioEngine : IDisposable
         {
             var encoded = _codec.EncodeAudio(pcm, PcmaFormat);
             if (encoded is { Length: > 0 })
+            {
                 session.SendAudio(FrameSamples, encoded);
+                Interlocked.Increment(ref _txPackets);
+            }
         }
         catch (Exception ex)
         {
@@ -233,9 +263,17 @@ public sealed class AudioEngine : IDisposable
                     pcm = _playResampler.Process(pcm);
                 if (pcm.Length == 0) return;
 
+                var gain = _speakerGain;
+                if (gain is not 1f)
+                {
+                    for (int i = 0; i < pcm.Length; i++)
+                        pcm[i] = (short)Math.Clamp(pcm[i] * gain, short.MinValue, short.MaxValue);
+                }
+
                 var bytes = new byte[pcm.Length * 2];
                 Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
                 _playback.AddSamples(bytes, 0, bytes.Length);
+                Interlocked.Increment(ref _rxPackets);
 
                 if (!_playStarted && _playback.BufferedDuration >= TimeSpan.FromMilliseconds(80))
                 {

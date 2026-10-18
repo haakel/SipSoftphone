@@ -1,11 +1,8 @@
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.IO;
-using System.Media;
-using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using WinForms = System.Windows.Forms;
 
 namespace SipSoftphone;
 
@@ -13,153 +10,139 @@ public partial class MainWindow : Window
 {
     private readonly AppConfig _config;
     private readonly PhoneEngine _engine;
-    private readonly ObservableCollection<HistoryRow> _history = new();
-    private readonly DispatcherTimer _durationTimer;
-    private bool _shutdown;
-
-    public ObservableCollection<HistoryRow> History => _history;
+    private readonly MainViewModel _vm;
+    private WinForms.NotifyIcon? _tray;
+    private bool _reallyExiting;
+    private ToastWindow? _toast;
 
     public MainWindow(AppConfig config)
     {
         InitializeComponent();
-        DataContext = this;
         _config = config;
-
         _engine = new PhoneEngine(config);
-        _engine.Log += OnLog;
-        _engine.CallChanged += OnCallChanged;
-        _engine.RegistrationChanged += OnRegChanged;
-        _engine.IncomingAlert += OnIncomingAlert;
+        _vm = new MainViewModel(config, _engine, Dispatcher);
+        DataContext = _vm;
+        _vm.IncomingCallAlert += OnIncomingAlert;
 
-        _durationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _durationTimer.Tick += (_, _) => UpdateDuration();
+        RestoreWindowState();
+        ApplyFlowDirection();
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsRtl)) ApplyFlowDirection();
+        };
 
         Loaded += OnWindowLoaded;
         Closing += OnWindowClosing;
-
-        LoadHistoryFromFile();
     }
+
+    // ---------- lifecycle ----------
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
         Diag.Sink = msg =>
         {
-            try { Dispatcher.BeginInvoke(() => AppendLog(msg)); }
+            try { Dispatcher.BeginInvoke(() => _vm.AppendLog(msg)); }
             catch { }
         };
 
-        ServerInfoText.Text = _engine.ServerInfo;
+        InitTray();
 
-        if (!_engine.Start())
+        if (!_vm.StartEngine())
+            _vm.AppendLog("[ui] engine failed to start — see log above", "error");
+    }
+
+    private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        SaveWindowState();
+
+        if (!_reallyExiting)
         {
-            AppendLog("[ui] engine failed to start — see log above");
+            // minimize to tray instead of quitting
+            e.Cancel = true;
+            Hide();
+            _tray?.ShowBalloonTip(4000, "SipSoftphone",
+                "Still running in the tray — incoming calls keep working.",
+                WinForms.ToolTipIcon.Info);
             return;
         }
 
-        if (_engine.Bus != null)
-            _engine.Bus.Emitted += OnBusEvent;
-
-        _durationTimer.Start();
-    }
-
-    private void OnWindowClosing(object? sender, CancelEventArgs e)
-    {
-        if (_shutdown) return;
-        _shutdown = true;
-        _durationTimer.Stop();
-        Diag.Sink = static msg => Console.WriteLine(msg);
+        _vm.Shutdown();
+        _tray?.Dispose();
+        _tray = null;
         _engine.Dispose();
+        _vm.Dispose();
     }
 
-    // ---------- logging ----------
-
-    private void OnLog(string msg) => Dispatcher.BeginInvoke(() => AppendLog(msg));
-
-    private void AppendLog(string msg)
+    public void ExitApplication()
     {
-        LogBox.AppendText(msg + Environment.NewLine);
-        if (LogBox.LineCount > 500)
+        _reallyExiting = true;
+        _toast?.TryClose();
+        Close();
+    }
+
+    // ---------- tray ----------
+
+    private void InitTray()
+    {
+        try
         {
-            var lines = LogBox.Text.Split('\n');
-            LogBox.Text = string.Join('\n', lines.Skip(lines.Length - 400));
+            var menu = new WinForms.ContextMenuStrip();
+            menu.Items.Add("Show", null, (_, _) => ShowFromTray());
+            menu.Items.Add("Exit", null, (_, _) => ExitApplication());
+
+            _tray = new WinForms.NotifyIcon
+            {
+                Icon = System.Drawing.SystemIcons.Application,
+                Text = "SipSoftphone",
+                ContextMenuStrip = menu,
+                Visible = true
+            };
+            _tray.DoubleClick += (_, _) => ShowFromTray();
         }
-        LogBox.ScrollToEnd();
-    }
-
-    // ---------- call state ----------
-
-    private void OnCallChanged(CallSnapshot call) => Dispatcher.BeginInvoke(() => ApplyCallState(call));
-
-    private void ApplyCallState(CallSnapshot call)
-    {
-        DisplayNameText.Text = string.IsNullOrWhiteSpace(call.DisplayName) ? (call.RawNumber.Length > 0 ? call.RawNumber : "—") : call.DisplayName;
-        NormalizedText.Text = call.NormalizedNumber.Length > 0 ? call.NormalizedNumber : "";
-        RawNumberText.Text = call.RawNumber.Length > 0 && call.RawNumber != call.NormalizedNumber ? $"raw: {call.RawNumber}" : "";
-
-        StateText.Text = call.State switch
+        catch (Exception ex)
         {
-            CallState.IncomingRinging => "Ringing (incoming)",
-            CallState.OutgoingRinging => "Calling…",
-            CallState.Active => "Active",
-            CallState.Ended => "Ended",
-            _ => "Idle"
-        };
-
-        AnswerButton.IsEnabled = call.State == CallState.IncomingRinging;
-        RejectButton.IsEnabled = call.State == CallState.IncomingRinging;
-        HangupButton.IsEnabled = call.State is CallState.IncomingRinging or CallState.OutgoingRinging or CallState.Active;
-        CallButton.IsEnabled = call.State is CallState.Idle or CallState.Ended;
-
-        if (call.State == CallState.Active)
-            _durationTimer.Start();
-        else
-        {
-            _durationTimer.Stop();
-            UpdateDuration(call);
+            _vm.AppendLog($"[ui] tray init failed: {ex.Message}", "warn");
         }
     }
 
-    private void UpdateDuration(CallSnapshot? call = null)
+    private void ShowFromTray()
     {
-        call ??= _engine.CurrentCall;
-        if (call.State == CallState.Active && call.AnsweredAt != null)
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void OnWindowStateChanged(object sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized && !_reallyExiting && IsLoaded)
         {
-            var d = DateTime.Now - call.AnsweredAt.Value;
-            DurationText.Text = d.ToString(@"mm\:ss");
-        }
-        else if (call.State == CallState.Ended && call.AnsweredAt != null && call.EndedAt != null)
-        {
-            var d = call.EndedAt.Value - call.AnsweredAt.Value;
-            DurationText.Text = d.TotalSeconds >= 0 ? d.ToString(@"mm\:ss") + " (ended)" : "";
-        }
-        else if (call.State == CallState.OutgoingRinging || call.State == CallState.IncomingRinging)
-        {
-            DurationText.Text = "";
-        }
-        else
-        {
-            DurationText.Text = "";
+            Hide();
+            _tray?.ShowBalloonTip(2000, "SipSoftphone", "Minimized to tray.",
+                WinForms.ToolTipIcon.Info);
         }
     }
 
-    private void OnRegChanged(RegistrationStatus status) => Dispatcher.BeginInvoke(() =>
-    {
-        RegText.Text = status.Text;
-        RegDot.Fill = (System.Windows.Media.Brush)FindResource(
-            status.IsOk ? "OkBrush" : status.Configured ? "ErrBrush" : "TextDimBrush");
-        ServerInfoText.Text = _engine.ServerInfo;
-    });
+    // ---------- incoming call toast ----------
 
     private void OnIncomingAlert(string from, string? name)
     {
         Dispatcher.BeginInvoke(() =>
         {
-            SystemSounds.Exclamation.Play();
-            FlashWindow();
+            FlashTaskbar();
+            try
+            {
+                _toast?.TryClose();
+                _toast = new ToastWindow(from, name,
+                    () => _ = _engine.AnswerPendingAsync(),
+                    () => _engine.RejectPending())
+                { Owner = this };
+                _toast.Show();
+            }
+            catch { }
         });
     }
 
-    private void FlashWindow()
+    private void FlashTaskbar()
     {
         try
         {
@@ -177,111 +160,167 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    // ---------- history ----------
+    // ---------- keyboard shortcuts ----------
 
-    private void OnBusEvent(CallEvent ev) => Dispatcher.BeginInvoke(() =>
+    private void OnWindowPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        var dir = ev.Event switch
-        {
-            "call_outgoing" => "OUT",
-            "call_received" or "call_cancelled" or "call_ring_timeout" or "call_rejected" => "IN",
-            _ => ""
-        };
-        var t = DateTime.TryParse(ev.Ts, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
-            ? dt.ToLocalTime() : DateTime.Now;
-        _history.Insert(0, new HistoryRow(t.ToString("HH:mm:ss"), dir, ev.Phone, ev.Event, ev.Detail));
-        while (_history.Count > 300) _history.RemoveAt(_history.Count - 1);
-    });
+        var call = _engine.CurrentCall.State;
 
-    private void LoadHistoryFromFile()
+        if (e.Key == Key.F5 && call == CallState.IncomingRinging)
+        { _ = _engine.AnswerPendingAsync(); e.Handled = true; return; }
+
+        if (e.Key == Key.F9 && call == CallState.IncomingRinging)
+        { _engine.RejectPending(); e.Handled = true; return; }
+
+        if (e.Key == Key.Escape && call is CallState.Active or CallState.OutgoingRinging or CallState.IncomingRinging)
+        { _engine.Hangup(); e.Handled = true; return; }
+
+        if (e.Key == Key.D && Keyboard.Modifiers == ModifierKeys.Control)
+        { DialBox.Focus(); e.Handled = true; return; }
+
+        if (e.Key == Key.M && Keyboard.Modifiers == ModifierKeys.Control && call == CallState.Active)
+        { _vm.MuteChecked = !_vm.MuteChecked; e.Handled = true; return; }
+
+        // while a call is active, digit keys send DTMF directly (unless typing in a text box)
+        if (call == CallState.Active &&
+            e.OriginalSource is not System.Windows.Controls.TextBox &&
+            Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Shift)
+        {
+            var ch = KeyToDigit(e.Key);
+            if (ch != '\0')
+            {
+                _ = _engine.SendDtmfAsync(ch);
+                e.Handled = true;
+            }
+        }
+    }
+
+    private static char KeyToDigit(Key k) => k switch
+    {
+        >= Key.D0 and <= Key.D9 => (char)('0' + ((int)k - (int)Key.D0)),
+        >= Key.NumPad0 and <= Key.NumPad9 => (char)('0' + ((int)k - (int)Key.NumPad0)),
+        Key.Multiply => '*',
+        Key.Add => '+',
+        Key.Subtract => '-',
+        Key.Decimal => '.',
+        _ => '\0'
+    };
+
+    // ---------- RTL ----------
+
+    private void OnRtlClick(object sender, RoutedEventArgs e) => _vm.ToggleRtl();
+
+    private void ApplyFlowDirection()
+        => FlowDirection = _vm.IsRtl ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
+
+    // ---------- window state persistence ----------
+
+    private void RestoreWindowState()
+    {
+        var ui = _config.Ui;
+        if (ui.WindowWidth >= 600 && ui.WindowHeight >= 400)
+        {
+            Width = ui.WindowWidth;
+            Height = ui.WindowHeight;
+        }
+        if (ui.WindowX is { } x && ui.WindowY is { } y)
+        {
+            if (x > SystemParameters.VirtualScreenLeft - 200 &&
+                x < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100 &&
+                y > SystemParameters.VirtualScreenTop - 100 &&
+                y < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
+            {
+                Left = x;
+                Top = y;
+                WindowStartupLocation = WindowStartupLocation.Manual;
+            }
+        }
+        if (ui.WindowMaximized) WindowState = WindowState.Maximized;
+    }
+
+    private void SaveWindowState()
     {
         try
         {
-            var path = Path.IsPathRooted(_config.Hook.LogFile)
-                ? _config.Hook.LogFile
-                : Path.Combine(AppContext.BaseDirectory, _config.Hook.LogFile);
-            if (!File.Exists(path)) return;
-
-            var rows = new List<HistoryRow>();
-            foreach (var line in File.ReadLines(path))
+            if (WindowState == WindowState.Normal)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    using var doc = JsonDocument.Parse(line);
-                    var r = doc.RootElement;
-                    var evt = r.GetProperty("event").GetString() ?? "";
-                    if (evt == "registration") continue;
-                    var phone = r.GetProperty("phone").GetString() ?? "";
-                    var detail = r.TryGetProperty("detail", out var d) ? d.GetString() ?? "" : "";
-                    var tsRaw = r.GetProperty("ts").GetString() ?? "";
-                    var t = DateTime.TryParse(tsRaw, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
-                        ? dt.ToLocalTime() : DateTime.Now;
-                    var dir = evt switch
-                    {
-                        "call_outgoing" => "OUT",
-                        "call_received" or "call_cancelled" or "call_ring_timeout" or "call_rejected" => "IN",
-                        _ => ""
-                    };
-                    rows.Add(new HistoryRow(t.ToString("HH:mm:ss"), dir, phone, evt, detail));
-                }
-                catch { }
+                _config.Ui.WindowX = Left;
+                _config.Ui.WindowY = Top;
+                _config.Ui.WindowWidth = Width;
+                _config.Ui.WindowHeight = Height;
+                _config.Ui.WindowMaximized = false;
             }
-            foreach (var row in rows.TakeLast(200).Reverse())
-                _history.Add(row);
+            else
+            {
+                _config.Ui.WindowMaximized = WindowState == WindowState.Maximized;
+            }
+            _config.Save();
         }
-        catch (Exception ex) { AppendLog($"[ui] history load failed: {ex.Message}"); }
+        catch { }
     }
 
-    // ---------- actions ----------
-
-    private async void OnAnswerClick(object sender, RoutedEventArgs e) => await _engine.AnswerPendingAsync();
-
-    private void OnRejectClick(object sender, RoutedEventArgs e) => _engine.RejectPending();
-
-    private void OnHangupClick(object sender, RoutedEventArgs e) => _engine.Hangup();
-
-    private async void OnCallClick(object sender, RoutedEventArgs e)
-    {
-        var num = DialBox.Text.Trim();
-        if (num.Length == 0) return;
-        await _engine.CallAsync(num);
-    }
-
-    private async void OnDialKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && DialBox.Text.Trim().Length > 0)
-        {
-            await _engine.CallAsync(DialBox.Text.Trim());
-            e.Handled = true;
-        }
-    }
-
-    private void OnDialTextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        => DialNormText.Text = DialBox.Text.Length > 0 ? "→ " + PhoneNormalizer.Normalize(DialBox.Text) : "";
-
-    private void OnPadClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is System.Windows.Controls.Button b && b.Content is string ch)
-        {
-            DialBox.Text += ch;
-            DialBox.CaretIndex = DialBox.Text.Length;
-            DialNormText.Text = PhoneNormalizer.Normalize(DialBox.Text);
-        }
-    }
+    // ---------- settings ----------
 
     private void OnSettingsClick(object sender, RoutedEventArgs e)
     {
+        var before = SnapshotSip();
         var win = new SettingsWindow(_config) { Owner = this };
-        if (win.ShowDialog() == true)
+        if (win.ShowDialog() != true) return;
+
+        var after = SnapshotSip();
+        var call = _engine.CurrentCall.State;
+        if (call is CallState.Active or CallState.OutgoingRinging or CallState.IncomingRinging)
         {
-            AppendLog("[ui] settings saved — restart the app to apply SIP/SSE changes");
-            ServerInfoText.Text = _engine.ServerInfo;
+            _vm.AppendLog("[ui] settings saved — SIP changes apply after the current call", "warn");
+        }
+        else if (before != after)
+        {
+            _vm.AppendLog("[ui] SIP settings changed — restarting engine…", "sip");
+            _engine.Restart();
+            _vm.ServerInfoText = _engine.ServerInfo;
+            _vm.ReloadAccountsFromConfig();
+        }
+        else
+        {
+            _vm.AppendLog("[ui] settings saved — audio/trigger changes apply on the next call");
+        }
+    }
+
+    private string SnapshotSip() =>
+        $"{_config.Sip.Server}|{_config.Sip.Port}|{_config.Sip.Username}|{_config.Sip.Password}|{_config.Sip.Transport}|{_config.Sip.ExpirySeconds}|{_config.Sip.Accounts.Count}|{_config.Sip.ActiveAccountIndex}";
+
+    // ---------- history / contacts double-click ----------
+
+    private async void OnHistoryDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (HistoryList.SelectedItem is HistoryItem h && h.Phone.Length > 0)
+        {
+            _vm.DialText = h.Phone;
+            if (_engine.CurrentCall.State is CallState.Idle or CallState.Ended)
+                await _engine.CallAsync(h.Phone);
+        }
+    }
+
+    private async void OnContactDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (ContactsList.SelectedItem is ContactItem c && c.Phone.Length > 0)
+        {
+            _vm.DialText = c.Phone;
+            if (_engine.CurrentCall.State is CallState.Idle or CallState.Ended)
+                await _engine.CallAsync(c.Phone);
+        }
+    }
+
+    private void OnDialKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && _vm.DialText.Trim().Length > 0 &&
+            _engine.CurrentCall.State is CallState.Idle or CallState.Ended)
+        {
+            _ = _engine.CallAsync(_vm.DialText.Trim());
+            e.Handled = true;
         }
     }
 }
-
-public sealed record HistoryRow(string Time, string Direction, string Phone, string Event, string Detail);
 
 internal static class NativeMethods
 {
