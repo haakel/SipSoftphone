@@ -115,6 +115,30 @@
             <Setter Property="Background" Value="{StaticResource PanelAltBrush}"/>
         </Style>
 
+        <!-- Phone keypad button style -->
+        <Style x:Key="PadKeyButton" TargetType="Button" BasedOn="{StaticResource PadButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#253048"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="TextBox">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="Background" Value="{StaticResource PanelAltBrush}"/>
@@ -308,7 +332,7 @@
 
         <!-- dial pad key with letters (2=ABC ...) -->
         <Style x:Key="PadLetter" TargetType="TextBlock" BasedOn="{StaticResource DimText}">
-            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="FontSize" Value="10"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
         </Style>
 

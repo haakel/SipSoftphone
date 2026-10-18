@@ -137,6 +137,68 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void ToggleRtl() => IsRtl = !IsRtl;
 
+    // ================= page navigation (mobile-like tabs) =================
+
+    private bool _isCallsPageVisible = true;
+    public bool IsCallsPageVisible 
+    { 
+        get => _isCallsPageVisible; 
+        set => Set(ref _isCallsPageVisible, value); 
+    }
+
+    private bool _isContactsPageVisible;
+    public bool IsContactsPageVisible 
+    { 
+        get => _isContactsPageVisible; 
+        set => Set(ref _isContactsPageVisible, value); 
+    }
+
+    private bool _isHistoryPageVisible;
+    public bool IsHistoryPageVisible 
+    { 
+        get => _isHistoryPageVisible; 
+        set => Set(ref _isHistoryPageVisible, value); 
+    }
+
+    private bool _isSystemLogsPageVisible;
+    public bool IsSystemLogsPageVisible 
+    { 
+        get => _isSystemLogsPageVisible; 
+        set => Set(ref _isSystemLogsPageVisible, value); 
+    }
+
+    public RelayCommand SetCallsPageCommand => new RelayCommand(() =>
+    {
+        IsCallsPageVisible = true;
+        IsContactsPageVisible = false;
+        IsHistoryPageVisible = false;
+        IsSystemLogsPageVisible = false;
+    });
+
+    public RelayCommand SetContactsPageCommand => new RelayCommand(() =>
+    {
+        IsContactsPageVisible = true;
+        IsCallsPageVisible = false;
+        IsHistoryPageVisible = false;
+        IsSystemLogsPageVisible = false;
+    });
+
+    public RelayCommand SetHistoryPageCommand => new RelayCommand(() =>
+    {
+        IsHistoryPageVisible = true;
+        IsCallsPageVisible = false;
+        IsContactsPageVisible = false;
+        IsSystemLogsPageVisible = false;
+    });
+
+    public RelayCommand SetSystemLogsPageCommand => new RelayCommand(() =>
+    {
+        IsSystemLogsPageVisible = true;
+        IsCallsPageVisible = false;
+        IsContactsPageVisible = false;
+        IsHistoryPageVisible = false;
+    });
+
     private static string RegDotKeyFor(RegistrationStatus s)
         => s.IsOk ? "OkBrush" : s.Configured ? "ErrBrush" : "TextDimBrush";
 
@@ -196,6 +258,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsRinging => CallStateKey == "Ringing";
     public bool IsActive => CallStateKey == "Active";
+    
+    // Helper properties for visibility binding
+    public bool IsIncoming => CallStateKey == "Ringing" && StateText.Contains("incoming");
+    public bool IsCallActive => CallStateKey == "Active" || CallStateKey == "Ended";
 
     private bool _muteChecked;
     public bool MuteChecked
@@ -219,10 +285,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (Set(ref _holdChecked, value))
+            {
+                _ = value ? _engine.Hold() : _engine.Resume();
                 OnPropertyChanged(nameof(HoldLabel));
+            }
         }
     }
     public string HoldLabel => HoldChecked ? "Resume" : "Hold";
+
+    // Hold command for UI binding
+    public RelayCommand HoldCommand => new RelayCommand(() =>
+    {
+        HoldChecked = !HoldChecked;
+    });
 
     private bool _transferPanelOpen;
     public bool TransferPanelOpen { get => _transferPanelOpen; set => Set(ref _transferPanelOpen, value); }
@@ -342,6 +417,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ToggleLogPauseCommand { get; private set; } = null!;
     public RelayCommand HistoryFilterCommand { get; private set; } = null!;
     public RelayCommand LogFilterCommand { get; private set; } = null!;
+    public RelayCommand ClearHistoryCommand => new RelayCommand(ClearHistory);
 
     // ================= history =================
 
@@ -677,6 +753,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ToggleLogPauseCommand = new RelayCommand(() => LogPaused = !LogPaused);
         HistoryFilterCommand = new RelayCommand(p => HistoryFilter = p as string ?? "All");
         LogFilterCommand = new RelayCommand(p => LogFilter = p as string ?? "All");
+    }
+
+    private void ClearHistory()
+    {
+        History.Clear();
+        AppendLog("[history] cleared", "ok");
     }
 
     public void Shutdown()
