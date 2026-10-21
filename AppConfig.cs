@@ -54,6 +54,9 @@ public class AppConfig
     [System.Text.Json.Serialization.JsonIgnore]
     public string ConfigPath { get; set; } = DefaultPath;
 
+    /// <summary>Deep copy via JSON round-trip (demo mode isolates its config so the real file is never touched).</summary>
+    public AppConfig Clone() => JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(this, JsonOpts), JsonOpts) ?? new AppConfig();
+
     public void Save(string? path = null)
     {
         var file = string.IsNullOrWhiteSpace(path) ? ConfigPath : Path.GetFullPath(path);

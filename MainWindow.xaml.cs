@@ -9,17 +9,18 @@ namespace SipSoftphone;
 public partial class MainWindow : Window
 {
     private readonly AppConfig _config;
-    private readonly PhoneEngine _engine;
+    private readonly ICallService _engine;
     private readonly MainViewModel _vm;
     private WinForms.NotifyIcon? _tray;
     private bool _reallyExiting;
     private ToastWindow? _toast;
 
-    public MainWindow(AppConfig config)
+    /// <summary>engine may be swapped for MockCallService in demo mode; defaults to the real PhoneEngine.</summary>
+    public MainWindow(AppConfig config, ICallService? engine = null)
     {
         InitializeComponent();
         _config = config;
-        _engine = new PhoneEngine(config);
+        _engine = engine ?? new PhoneEngine(config);
         _vm = new MainViewModel(config, _engine, Dispatcher);
         DataContext = _vm;
         _vm.IncomingCallAlert += OnIncomingAlert;
@@ -218,7 +219,8 @@ public partial class MainWindow : Window
     private void RestoreWindowState()
     {
         var ui = _config.Ui;
-        if (ui.WindowWidth >= 600 && ui.WindowHeight >= 400)
+        // desktop layout — ignore sizes persisted by the old phone-sized UI
+        if (ui.WindowWidth >= 800 && ui.WindowHeight >= 560)
         {
             Width = ui.WindowWidth;
             Height = ui.WindowHeight;

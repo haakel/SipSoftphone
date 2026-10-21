@@ -2,577 +2,785 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SipSoftphone"
-        Title="SipSoftphone" Width="400" Height="780" MinWidth="360" MinHeight="640"
+        Title="SipSoftphone" Width="1060" Height="700" MinWidth="880" MinHeight="580"
         Background="{StaticResource BgBrush}" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13"
         PreviewKeyDown="OnWindowPreviewKeyDown" StateChanged="OnWindowStateChanged">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <local:KeyToBrushConverter x:Key="KeyToBrush"/>
+        <local:InverseBoolToVisConverter x:Key="InvBoolToVis"/>
         <local:NullToVisConverter x:Key="NullToVis"/>
+        <local:KeyToBrushConverter x:Key="KeyToBrush"/>
+        <local:KeyToGeometryConverter x:Key="KeyToGeo"/>
+        <local:CountZeroToVisConverter x:Key="CountZeroToVis"/>
+        <local:CountToVisConverter x:Key="CountToVis"/>
+        <local:InverseNullToVisConverter x:Key="InvNullToVis"/>
+        <local:CountToBoolConverter x:Key="CountToBool"/>
 
-        <!-- Phone frame style -->
-        <Style x:Key="PhoneFrameStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource BgBrush}"/>
+        <!-- avatar circle used for caller / contact -->
+        <Style x:Key="AvatarCircle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+            <Setter Property="Width" Value="56"/>
+            <Setter Property="Height" Value="56"/>
             <Setter Property="CornerRadius" Value="28"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush2}"/>
-            <Setter Property="BorderThickness" Value="3"/>
-            <Setter Property="Padding" Value="12"/>
-        </Style>
-
-        <!-- Tab button style -->
-        <Style x:Key="TabButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextDimBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="8,4"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Active tab indicator -->
-        <Style x:Key="ActiveTabIndicator" TargetType="Border">
-            <Setter Property="Height" Value="3"/>
-            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="CornerRadius" Value="2"/>
-        </Style>
-
-        <!-- Page container -->
-        <Style x:Key="PageContainer" TargetType="Grid">
-            <Setter Property="Visibility" Value="Collapsed"/>
-        </Style>
-
-        <!-- Status bar style -->
-        <Style x:Key="StatusBarStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
         </Style>
     </Window.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="212"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <!-- Phone frame containing all content -->
-        <Border Style="{StaticResource PhoneFrameStyle}">
-            
-            <!-- ================= CALLS PAGE ================= -->
-            <Grid x:Name="CallsPage" Visibility="{Binding IsCallsPageVisible, Converter={StaticResource BoolToVis}}">
+        <!-- ==================== SIDEBAR ==================== -->
+        <Border Grid.Column="0" Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,0,1,0">
+            <Grid Margin="10,14,10,12">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Status bar (registration + account) -->
-                <Border Grid.Row="0" Style="{StaticResource StatusBarStyle}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+                <!-- brand -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,0,0,16">
+                    <Border Width="30" Height="30" CornerRadius="8" Background="{StaticResource AccentBrush}">
+                        <Path Style="{StaticResource IconPath}" Height="16" Width="16"
+                              Data="{StaticResource IcoPhone}" Stroke="White" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="SipSoftphone" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="Desktop softphone" Style="{StaticResource DimText}" FontSize="10.5" Margin="0,1,0,0"/>
+                    </StackPanel>
+                </StackPanel>
 
-                        <StackPanel Grid.Column="0" Orientation="Horizontal">
-                            <Ellipse Width="10" Height="10" Fill="{Binding RegDotBrushKey, Converter={StaticResource KeyToBrush}}"/>
-                            <TextBlock Text="{Binding RegText}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                <!-- navigation -->
+                <StackPanel Grid.Row="1">
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" IsChecked="True"
+                                 Command="{Binding SetCallsPageCommand}" ToolTip="Dialer"
+                                 Tag="{StaticResource IcoPhone}" Content="Dialer"/>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav"
+                                 Command="{Binding SetContactsPageCommand}" ToolTip="Contacts"
+                                 Tag="{StaticResource IcoUsers}" Content="Contacts"/>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav"
+                                 Command="{Binding SetHistoryPageCommand}" ToolTip="Call history"
+                                 Tag="{StaticResource IcoClock}" Content="Call History"/>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav"
+                                 Command="{Binding SetSystemLogsPageCommand}" ToolTip="System logs"
+                                 Tag="{StaticResource IcoList}" Content="Logs"/>
+                </StackPanel>
+
+                <!-- bottom: status + account + settings -->
+                <StackPanel Grid.Row="3">
+                    <Border Style="{StaticResource SideCard}" Margin="0,0,0,8"
+                            ToolTip="{Binding ServerInfoText}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                         Fill="{Binding RegDotBrushKey, Converter={StaticResource KeyToBrush}}"/>
+                                <TextBlock Text="{Binding RegText}" FontWeight="SemiBold" FontSize="12"
+                                           Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding RegExpiryText}" Style="{StaticResource DimText}" FontSize="10.5"
+                                       Margin="17,2,0,0" Visibility="{Binding RegExpiryText, Converter={StaticResource NullToVis}}"/>
+                            <ComboBox ItemsSource="{Binding Accounts}" SelectedIndex="{Binding SelectedAccountIndex, Mode=TwoWay}"
+                                      Margin="0,8,0,0" Height="30" ToolTip="Active SIP account">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding Label}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Label}" Value="">
+                                                            <Setter Property="Text" Value="{Binding Username}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </StackPanel>
-
-                        <ComboBox Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Width="200" ItemsSource="{Binding Accounts}"
-                                  SelectedIndex="{Binding SelectedAccountIndex, Mode=TwoWay}"
-                                  ToolTip="Active SIP account"/>
-
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button Content="⚙" Padding="4,4" Margin="8,0,0,0" Click="OnSettingsClick" ToolTip="Settings"/>
+                    </Border>
+                    <Button Click="OnSettingsClick" HorizontalAlignment="Stretch" Height="36" Padding="12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Height="15" Width="15"
+                                  Data="{StaticResource IcoSettings}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Settings" Margin="9,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
-                    </Grid>
-                </Border>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
 
-                <!-- Current call display -->
-                <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="16" Padding="20" Margin="0,0,0,12">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+        <!-- ==================== MAIN CONTENT ==================== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-                        <!-- Call status header -->
-                        <StackPanel Grid.Row="0" HorizontalAlignment="Center">
-                            <TextBlock Text="CALL" Style="{StaticResource DimText}" FontSize="10" HorizontalAlignment="Center"/>
-                            <TextBlock Text="{Binding StateText}" FontSize="20" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-
-                        <!-- Caller info or dial pad trigger -->
-                        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Ellipse Width="80" Height="80" Background="{StaticResource AccentBrush}" CornerRadius="40"
-                                     HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRinging}" Value="True">
-                                                <Setter Property="Opacity" Value="0.3"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Ellipse.Style>
+            <!-- incoming call banner: prominent but non-blocking -->
+            <Border Grid.Row="0" Visibility="{Binding IsIncoming, Converter={StaticResource BoolToVis}}"
+                    Background="#2A2005" BorderBrush="{StaticResource WarnBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="14,10" Margin="16,14,16,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource AvatarCircle}" Width="44" Height="44" CornerRadius="22">
+                        <Grid>
+                            <TextBlock Text="{Binding CallerInitials}" Style="{StaticResource AvatarText}" FontSize="15"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding CallerInitials, Converter={StaticResource NullToVis}}"/>
+                            <Path Style="{StaticResource IconPath}" Height="20" Width="20" Data="{StaticResource IcoPhoneIncoming}"
+                                  Stroke="{StaticResource WarnBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="{Binding CallerInitials, Converter={StaticResource InvNullToVis}}"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource WarnBrush}" VerticalAlignment="Center">
                                 <Ellipse.Triggers>
                                     <EventTrigger RoutedEvent="Ellipse.Loaded">
-                                        <BeginStoryboard x:Name="ringPulseBegin">
+                                        <BeginStoryboard>
                                             <Storyboard>
                                                 <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                 From="0.3" To="0.05" Duration="0:0:0.8"
+                                                                 From="1" To="0.25" Duration="0:0:0.8"
                                                                  AutoReverse="True" RepeatBehavior="Forever"/>
                                             </Storyboard>
                                         </BeginStoryboard>
                                     </EventTrigger>
                                 </Ellipse.Triggers>
-                                <TextBlock Text="📞" FontSize="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Ellipse>
-                            <TextBlock Text="{Binding DisplayNameText}" FontSize="22" FontWeight="Bold"
-                                       HorizontalAlignment="Center" Margin="0,12,0,0" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Text="{Binding NormalizedText}" Style="{StaticResource DimText}"
-                                       FontSize="14" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                            <TextBlock Text="{Binding DurationText}" FontFamily="Consolas" FontSize="18"
-                                       HorizontalAlignment="Center" Margin="0,8,0,0"
-                                       Visibility="{Binding DurationText, Converter={StaticResource NullToVis}, FallbackValue='Visible'}"/>
+                            <TextBlock Text="Incoming call" Foreground="{StaticResource WarnBrush}" FontWeight="SemiBold"
+                                       FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
+                        <TextBlock Text="{Binding DisplayNameText}" FontWeight="SemiBold" FontSize="15"
+                                   TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+                        <TextBlock Text="{Binding NormalizedText}" Style="{StaticResource DimText}" FontSize="11.5"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Decline" Style="{StaticResource RedButton}" Padding="16,8" Margin="0,0,8,0"
+                                Command="{Binding RejectCommand}" ToolTip="Reject the incoming call"/>
+                        <Button Style="{StaticResource GreenButton}" Padding="16,8" Command="{Binding AnswerCommand}"
+                                ToolTip="Answer the incoming call">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource IconPath}" Height="14" Width="14" Data="{StaticResource IcoPhone}"
+                                      Stroke="White" VerticalAlignment="Center"/>
+                                <TextBlock Text="Answer" Foreground="White" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
 
-                        <!-- In-call controls -->
-                        <StackPanel Grid.Row="2" HorizontalAlignment="Center" Margin="0,20,0,0">
-                            <Grid>
+            <!-- ==================== PAGES ==================== -->
+            <Grid Grid.Row="1" Margin="16">
+
+                <!-- ============ DIALER PAGE ============ -->
+                <Grid x:Name="CallsPage" Visibility="{Binding IsCallsPageVisible, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="280"/>
+                        <ColumnDefinition Width="320"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- call panel -->
+                    <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,14,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- state pill -->
+                            <StackPanel Grid.Row="0" HorizontalAlignment="Center">
+                                <Border Style="{StaticResource StatePill}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="{StaticResource TextDimBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CallStateKey}" Value="Ringing">
+                                                            <Setter Property="Fill" Value="{StaticResource WarnBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding CallStateKey}" Value="Active">
+                                                            <Setter Property="Fill" Value="{StaticResource OkBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding CallStateKey}" Value="Failed">
+                                                            <Setter Property="Fill" Value="{StaticResource ErrBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="{Binding StateText}" FontSize="12" FontWeight="SemiBold" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextDimBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CallStateKey}" Value="Ringing">
+                                                            <Setter Property="Foreground" Value="{StaticResource WarnBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding CallStateKey}" Value="Active">
+                                                            <Setter Property="Foreground" Value="{StaticResource OkBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding CallStateKey}" Value="Failed">
+                                                            <Setter Property="Foreground" Value="{StaticResource ErrBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- caller info -->
+                            <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,14,0,0">
+                                <Border Width="84" Height="84" CornerRadius="42">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border" BasedOn="{StaticResource AvatarCircle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRinging}" Value="True">
+                                                    <Setter Property="Background" Value="#4A3506"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                    <Setter Property="Background" Value="#14401F"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <TextBlock Text="{Binding CallerInitials}" Style="{StaticResource AvatarText}" FontSize="26"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Visibility="{Binding CallerInitials, Converter={StaticResource NullToVis}}"/>
+                                        <Path Style="{StaticResource IconPath}" Height="34" Width="34" Data="{StaticResource IcoPhone}"
+                                              Stroke="{StaticResource TextDimBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Visibility="{Binding CallerInitials, Converter={StaticResource InvNullToVis}}"/>
+                                    </Grid>
+                                </Border>
+                                <TextBlock Text="{Binding DisplayNameText}" FontSize="21" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Margin="0,12,0,0" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding DisplayNameText}"/>
+                                <TextBlock Text="{Binding NormalizedText}" Style="{StaticResource DimText}" FontSize="13"
+                                           HorizontalAlignment="Center" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding NormalizedText}"/>
+                                <TextBlock Text="{Binding RawNumberText}" Style="{StaticResource DimText}" FontSize="11"
+                                           HorizontalAlignment="Center" Margin="0,2,0,0"
+                                           Visibility="{Binding RawNumberText, Converter={StaticResource NullToVis}}"/>
+                                <TextBlock Text="{Binding DurationText}" FontFamily="Consolas" FontSize="26"
+                                           HorizontalAlignment="Center" Margin="0,14,0,0"
+                                           Visibility="{Binding DurationText, Converter={StaticResource NullToVis}}"/>
+                                <TextBlock Text="{Binding CodecText}" Style="{StaticResource DimText}" FontSize="11"
+                                           HorizontalAlignment="Center" Margin="0,4,0,0"
+                                           Visibility="{Binding CodecText, Converter={StaticResource NullToVis}}"/>
+                            </StackPanel>
+
+                            <!-- actions: answer/decline while ringing, end while outgoing/active -->
+                            <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button Style="{StaticResource GreenButton}" MinWidth="118" Height="42" Padding="18,0"
+                                            Command="{Binding AnswerCommand}" Visibility="{Binding IsIncoming, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="Answer the incoming call">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoPhone}"
+                                                  Stroke="White" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Answer" Foreground="White" FontWeight="SemiBold" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource RedButton}" MinWidth="118" Height="42" Padding="18,0" Margin="10,0,0,0"
+                                            Command="{Binding RejectCommand}" Visibility="{Binding IsIncoming, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="Reject the incoming call">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoX}"
+                                                  Stroke="White" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Decline" Foreground="White" FontWeight="SemiBold" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource RedButton}" MinWidth="118" Height="42" Padding="18,0"
+                                            Command="{Binding HangupCommand}"
+                                            Visibility="{Binding ShowBannerEnd, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="End the current call">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoPhone}"
+                                                  Stroke="White" VerticalAlignment="Center">
+                                                <Path.RenderTransform>
+                                                    <RotateTransform Angle="135"/>
+                                                </Path.RenderTransform>
+                                            </Path>
+                                            <TextBlock Text="{Binding EndCallLabel}" Foreground="White" FontWeight="SemiBold" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+
+                                <TextBlock Text="Type a number or pick a contact to start calling."
+                                           Style="{StaticResource EmptyState}" Margin="0,10,0,0"
+                                           Visibility="{Binding IsIdle, Converter={StaticResource BoolToVis}}"/>
+                                <TextBlock Text="Call failed — check the number or the SIP account registration."
+                                           Style="{StaticResource EmptyState}" Foreground="{StaticResource ErrBrush}"
+                                           TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"
+                                           Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}"/>
+
+                                <!-- in-call controls -->
+                                <StackPanel Margin="0,14,0,0" Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <ToggleButton Style="{StaticResource CallControlButton}" Command="{Binding ToggleMuteCommand}"
+                                                      IsChecked="{Binding MuteChecked, Mode=OneWay}" ToolTip="Mute / unmute the microphone">
+                                            <StackPanel>
+                                                <Path Style="{StaticResource IconPath}" Height="18" Width="18" HorizontalAlignment="Center"
+                                                      Data="{StaticResource IcoMic}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                                <TextBlock Text="{Binding MuteLabel}" Style="{StaticResource ControlCaption}" Margin="0,5,0,0"/>
+                                            </StackPanel>
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource CallControlButton}" Margin="8,0,0,0"
+                                                      IsChecked="{Binding HoldChecked, Mode=TwoWay}" ToolTip="Place the call on hold / resume it">
+                                            <StackPanel>
+                                                <Path Style="{StaticResource IconPath}" Height="18" Width="18" HorizontalAlignment="Center"
+                                                      Data="{StaticResource IcoPause}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                                <TextBlock Text="{Binding HoldLabel}" Style="{StaticResource ControlCaption}" Margin="0,5,0,0"/>
+                                            </StackPanel>
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource CallControlButton}" Margin="8,0,0,0"
+                                                      IsChecked="{Binding KeypadOpen, Mode=TwoWay}" ToolTip="Show / hide the dial pad">
+                                            <StackPanel>
+                                                <Path Style="{StaticResource IconPath}" Height="18" Width="18" HorizontalAlignment="Center"
+                                                      Data="{StaticResource IcoGrid}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                                <TextBlock Text="Keypad" Style="{StaticResource ControlCaption}" Margin="0,5,0,0"/>
+                                            </StackPanel>
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource CallControlButton}" Margin="8,0,0,0"
+                                                      IsChecked="{Binding TransferPanelOpen, Mode=TwoWay}"
+                                                      Command="{Binding ToggleTransferPanelCommand}"
+                                                      ToolTip="Transfer this call to another number">
+                                            <StackPanel>
+                                                <Path Style="{StaticResource IconPath}" Height="18" Width="18" HorizontalAlignment="Center"
+                                                      Data="{StaticResource IcoTransfer}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                                <TextBlock Text="Transfer" Style="{StaticResource ControlCaption}" Margin="0,5,0,0"/>
+                                            </StackPanel>
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource CallControlButton}" Margin="8,0,0,0" IsEnabled="False"
+                                                      ToolTip="Add call (not available yet)">
+                                            <StackPanel>
+                                                <Path Style="{StaticResource IconPath}" Height="18" Width="18" HorizontalAlignment="Center"
+                                                      Data="{StaticResource IcoUserPlus}" Stroke="{StaticResource TextDimBrush}"/>
+                                                <TextBlock Text="Add call" Style="{StaticResource ControlCaption}" Margin="0,5,0,0"/>
+                                                </StackPanel>
+                                                </ToggleButton>
+                                    </StackPanel>
+
+                                    <!-- transfer panel -->
+                                    <Border Margin="0,12,0,0" Padding="12,10" Background="{StaticResource PanelAltBrush}" CornerRadius="10"
+                                            Visibility="{Binding TransferPanelOpen, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="Transfer call to" Style="{StaticResource DimText}" FontSize="11" Margin="0,0,0,6"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Text="{Binding TransferText, UpdateSourceTrigger=PropertyChanged}"
+                                                         Height="34" FontSize="14" ToolTip="Transfer target number"/>
+                                                <Button Grid.Column="1" Content="Blind" Style="{StaticResource GreenButton}"
+                                                        Padding="14,0" Height="34" Margin="8,0,0,0"
+                                                        Command="{Binding TransferConfirmCommand}" ToolTip="Blind transfer"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding TransferStatus}" Style="{StaticResource DimText}" FontSize="11" Margin="0,6,0,0"
+                                                       Visibility="{Binding TransferStatus, Converter={StaticResource NullToVis}}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <!-- dial pad -->
+                    <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="18"
+                            Visibility="{Binding KeypadOpen, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- number input -->
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Button Grid.Column="0" Content="🔇" Command="{Binding ToggleMuteCommand}"
-                                        Style="{StaticResource TabButton}" Margin="0,0,5,0"
-                                        ToolTip="Mute"/>
-                                <Button Grid.Column="1" Content="🔊" Command="{Binding HoldCommand}"
-                                        Style="{StaticResource TabButton}" Margin="0,0,5,0"
-                                        ToolTip="Hold"/>
-                                <Button Grid.Column="2" Content="➕" Command="{Binding ToggleTransferPanelCommand}"
-                                        Style="{StaticResource TabButton}"
-                                        ToolTip="Transfer"/>
+                                <TextBox Grid.Column="0" x:Name="DialBox" FontSize="20" Height="46"
+                                         Text="{Binding DialText, UpdateSourceTrigger=PropertyChanged}"
+                                         HorizontalContentAlignment="Center" KeyDown="OnDialKeyDown"
+                                         ToolTip="Phone number (type or paste; Enter to call)"/>
+                                <Button Grid.Column="1" Style="{StaticResource IconButton}" Margin="8,0,0,0"
+                                        Command="{Binding BackspaceDialCommand}" ToolTip="Delete last digit"
+                                        IsEnabled="{Binding DialText.Length, Converter={StaticResource CountToBool}}">
+                                    <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoBackspace}"/>
+                                </Button>
+                                <Button Grid.Column="2" Style="{StaticResource IconButton}" Margin="6,0,0,0"
+                                        Command="{Binding ClearDialCommand}" ToolTip="Clear the number"
+                                        IsEnabled="{Binding DialText.Length, Converter={StaticResource CountToBool}}">
+                                    <Path Style="{StaticResource IconPath}" Height="14" Width="14" Data="{StaticResource IcoX}"/>
+                                </Button>
                             </Grid>
-                            
-                            <!-- Transfer panel -->
-                            <Border Margin="0,10,0,0" Padding="12,8" Background="{StaticResource PanelAltBrush}"
-                                    CornerRadius="12"
-                                    Visibility="{Binding TransferPanelOpen, Converter={StaticResource BoolToVis}}">
-                                <StackPanel>
-                                    <TextBox Text="{Binding TransferText, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="36" Padding="10,6" FontSize="14"
-                                             HorizontalContentAlignment="Center"
-                                             ToolTip="Transfer target"/>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
-                                        <Button Content="Blind" Command="{Binding TransferConfirmCommand}"
-                                                Style="{StaticResource BigGreenButton}" Width="80" Margin="0,0,6,0"/>
-                                        <Button Content="✕" Command="{Binding ToggleTransferPanelCommand}"
-                                                Padding="12,6"/>
+
+                            <TextBlock Grid.Row="1" Text="{Binding DialNormText}" Style="{StaticResource DimText}"
+                                       FontSize="11" Margin="2,0,0,10" HorizontalAlignment="Right"
+                                       Visibility="{Binding DialNormText, Converter={StaticResource NullToVis}}"/>
+
+                            <!-- keypad -->
+                            <UniformGrid Grid.Row="2" Columns="3">
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="1">
+                                    <StackPanel><TextBlock Text="1" FontSize="22"/><TextBlock Text=" " Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="2">
+                                    <StackPanel><TextBlock Text="2" FontSize="22"/><TextBlock Text="ABC" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="3">
+                                    <StackPanel><TextBlock Text="3" FontSize="22"/><TextBlock Text="DEF" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="4">
+                                    <StackPanel><TextBlock Text="4" FontSize="22"/><TextBlock Text="GHI" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="5">
+                                    <StackPanel><TextBlock Text="5" FontSize="22"/><TextBlock Text="JKL" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="6">
+                                    <StackPanel><TextBlock Text="6" FontSize="22"/><TextBlock Text="MNO" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="7">
+                                    <StackPanel><TextBlock Text="7" FontSize="22"/><TextBlock Text="PQRS" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="8">
+                                    <StackPanel><TextBlock Text="8" FontSize="22"/><TextBlock Text="TUV" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="9">
+                                    <StackPanel><TextBlock Text="9" FontSize="22"/><TextBlock Text="WXYZ" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="*">
+                                    <TextBlock Text="*" FontSize="22"/>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="0">
+                                    <StackPanel><TextBlock Text="0" FontSize="22"/><TextBlock Text="+" Style="{StaticResource PadLetter}"/></StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="#">
+                                    <TextBlock Text="#" FontSize="22"/>
+                                </Button>
+                            </UniformGrid>
+
+                            <!-- call button -->
+                            <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                                <Button Style="{StaticResource GreenButton}" Height="48" HorizontalAlignment="Stretch"
+                                        Command="{Binding CallCommand}" FontSize="15" FontWeight="SemiBold"
+                                        ToolTip="Place the call">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Path Style="{StaticResource IconPath}" Height="16" Width="16" Data="{StaticResource IcoPhone}"
+                                              Stroke="White" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Call" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- Answer/Reject buttons -->
-                        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0">
-                            <Button Content="Answer" Style="{StaticResource BigGreenButton}" Width="100" Margin="0,0,10,0"
-                                    Command="{Binding AnswerCommand}"
-                                    Visibility="{Binding IsIncoming, Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="Reject" Style="{StaticResource BigRedButton}" Width="100"
-                                    Command="{Binding RejectCommand}"
-                                    Visibility="{Binding IsIncoming, Converter={StaticResource BoolToVis}}"/>
-                            <Button Content="End Call" Style="{StaticResource BigRedButton}" Width="100"
-                                    Command="{Binding HangupCommand}"
-                                    Visibility="{Binding IsCallActive, Converter={StaticResource BoolToVis}}"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- Dial pad section -->
-                <Border Grid.Row="2" Background="{StaticResource PanelBrush}" CornerRadius="16" Padding="16">
-                    <StackPanel>
-                        <!-- Dial input -->
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="DialBox" FontSize="20" Height="44"
-                                     Text="{Binding DialText, UpdateSourceTrigger=PropertyChanged}"
-                                     HorizontalContentAlignment="Center" KeyDown="OnDialKeyDown"
-                                     Background="Transparent" Foreground="{StaticResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="📞" Style="{StaticResource BigGreenButton}"
-                                    Padding="14,10" Margin="8,0,0,0" Command="{Binding CallCommand}"/>
+                                </Button>
+                                <TextBlock Text="{Binding DialHint}" Style="{StaticResource DimText}" FontSize="11"
+                                           HorizontalAlignment="Center" Margin="0,8,0,0"
+                                           Visibility="{Binding DialHint, Converter={StaticResource NullToVis}}"/>
+                            </StackPanel>
                         </Grid>
-                        <TextBlock Text="{Binding DialNormText}" Style="{StaticResource DimText}"
-                                   FontSize="11" Margin="0,0,0,12" HorizontalAlignment="Right"/>
+                    </Border>
+                </Grid>
 
-                        <!-- Keypad -->
-                        <UniformGrid Columns="3" Margin="0,0,0,12">
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="1">
-                                <StackPanel><TextBlock Text="1" FontSize="22"/><TextBlock Text=" " Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="2">
-                                <StackPanel><TextBlock Text="2" FontSize="22"/><TextBlock Text="ABC" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="3">
-                                <StackPanel><TextBlock Text="3" FontSize="22"/><TextBlock Text="DEF" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="4">
-                                <StackPanel><TextBlock Text="4" FontSize="22"/><TextBlock Text="GHI" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="5">
-                                <StackPanel><TextBlock Text="5" FontSize="22"/><TextBlock Text="JKL" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="6">
-                                <StackPanel><TextBlock Text="6" FontSize="22"/><TextBlock Text="MNO" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="7">
-                                <StackPanel><TextBlock Text="7" FontSize="22"/><TextBlock Text="PQRS" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="8">
-                                <StackPanel><TextBlock Text="8" FontSize="22"/><TextBlock Text="TUV" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="9">
-                                <StackPanel><TextBlock Text="9" FontSize="22"/><TextBlock Text="WXYZ" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="*">
-                                <TextBlock Text="*" FontSize="22"/>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="0">
-                                <StackPanel><TextBlock Text="0" FontSize="22"/><TextBlock Text="+" Style="{StaticResource PadLetter}"/></StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PadKeyButton}" Command="{Binding PadCommand}" CommandParameter="#">
-                                <TextBlock Text="#" FontSize="22"/>
-                            </Button>
-                        </UniformGrid>
-                    </StackPanel>
-                </Border>
-            </Grid>
+                <!-- ============ CONTACTS PAGE ============ -->
+                <Grid x:Name="ContactsPage" Visibility="{Binding IsContactsPageVisible, Converter={StaticResource BoolToVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-            <!-- ================= CONTACTS PAGE ================= -->
-            <Grid x:Name="ContactsPage" Visibility="{Binding IsContactsPageVisible, Converter={StaticResource BoolToVis}}"
-                  Background="{StaticResource BgBrush}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- Search + Add -->
-                <Border Grid.Row="0" Background="{StaticResource PanelBrush}" CornerRadius="16" Padding="16" Margin="0,0,0,12">
-                    <StackPanel>
+                    <!-- toolbar -->
+                    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,12">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding ContactSearch, UpdateSourceTrigger=PropertyChanged}"
-                                     Height="36" Padding="12,8" FontSize="14"
-                                     VerticalContentAlignment="Center"
-                                     ToolTip="Search contacts"/>
-                            <Button Grid.Column="1" Content="＋" Padding="12,8" Margin="8,0,0,0" FontSize="18"
-                                    Command="{Binding AddContactCommand}" ToolTip="Add contact"/>
+                            <Grid Grid.Column="0">
+                                <TextBox Text="{Binding ContactSearch, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="36" Padding="32,6,10,6" FontSize="13.5"
+                                         VerticalContentAlignment="Center" ToolTip="Search contacts by name or number"/>
+                                <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoSearch}"
+                                      Stroke="{StaticResource TextDimBrush}" HorizontalAlignment="Left" Margin="10,0,0,0"
+                                      VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            </Grid>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBox Text="{Binding NewContactName, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="140" Height="36" FontSize="13" VerticalContentAlignment="Center"
+                                         ToolTip="New contact name"/>
+                                <TextBox Text="{Binding NewContactPhone, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="130" Height="36" FontSize="13" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                                         ToolTip="New contact phone number"/>
+                                <Button Style="{StaticResource GreenButton}" Height="36" Padding="12,0" Margin="6,0,0,0"
+                                        Command="{Binding AddContactCommand}" ToolTip="Add this contact">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Style="{StaticResource IconPath}" Height="14" Width="14" Data="{StaticResource IcoPlus}"
+                                              Stroke="White" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Add" Foreground="White" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
                         </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Contacts list -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="0,0,0,80">
-                        <!-- Speed dials -->
-                        <ItemsControl ItemsSource="{Binding SpeedDials}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/></ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Margin="4" Padding="12,8" Width="120"
-                                            Command="{Binding DataContext.DialContactCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="{Binding Phone}">
-                                        <StackPanel HorizontalAlignment="Center">
-                                            <Ellipse Width="40" Height="40" Background="{StaticResource AccentBrush}" CornerRadius="20">
-                                                <TextBlock Text="{Binding Initials}" Style="{StaticResource AvatarText}" FontSize="14"/>
-                                            </Ellipse>
-                                            <TextBlock Text="{Binding Name}" FontSize="11" HorizontalAlignment="Center" MaxWidth="110" TextTrimming="CharacterEllipsis"/>
-                                        </StackPanel>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <TextBlock Text="ALL CONTACTS" Style="{StaticResource DimText}" FontSize="11" Margin="16,12,16,8"/>
-
-                        <!-- Full contacts list -->
-                        <ListBox ItemsSource="{Binding FilteredContacts}"
-                                 SelectedItem="{Binding SelectedContact, Mode=TwoWay}"
-                                 MouseDoubleClick="OnContactDoubleClick"
-                                 Background="Transparent" BorderThickness="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,6">
+                    </Border>
+                    <!-- list -->
+                    <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="8">
+                        <Grid>
+                            <ListBox x:Name="ContactsList" ItemsSource="{Binding FilteredContacts}"
+                                     SelectedItem="{Binding SelectedContact, Mode=TwoWay}"
+                                     ItemContainerStyle="{StaticResource ContactItem}"
+                                     Background="Transparent" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     MouseDoubleClick="OnContactDoubleClick"
+                                     Visibility="{Binding FilteredContacts.Count, Converter={StaticResource CountToVis}}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="44"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <Ellipse Width="44" Height="44" Background="{StaticResource AccentBrush}" CornerRadius="22" Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="{Binding Initials}" Style="{StaticResource AvatarText}" FontSize="14"/>
-                                            </Ellipse>
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding Phone}" Style="{StaticResource DimText}" FontSize="12"/>
+                                            <Border Grid.Column="0" Style="{StaticResource AvatarCircle}" Width="38" Height="38" CornerRadius="19">
+                                                <TextBlock Text="{Binding Initials}" Style="{StaticResource AvatarText}" FontSize="12.5"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13.5"
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="260"/>
+                                                    <Path Style="{StaticResource IconPath}" Height="12" Width="12" Data="{StaticResource IcoStar}"
+                                                          Stroke="{StaticResource WarnBrush}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                          ToolTip="Speed dial"
+                                                          Visibility="{Binding SpeedDial, Converter={StaticResource BoolToVis}}"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Phone}" Style="{StaticResource DimText}" FontSize="12" Margin="0,1,0,0"/>
                                             </StackPanel>
-                                            <TextBlock Grid.Column="2" Text="★" FontSize="14" Foreground="{StaticResource WarnBrush}"
-                                                       Visibility="{Binding SpeedDial, Converter={StaticResource BoolToVis}}"/>
+                                            <Button Grid.Column="2" Style="{StaticResource IconButton}" VerticalAlignment="Center"
+                                                    Command="{Binding DataContext.DialContactCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Call this contact">
+                                                <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoPhone}"
+                                                      Stroke="{StaticResource OkBrush}"/>
+                                            </Button>
                                         </Grid>
-                                    </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock Style="{StaticResource EmptyState}"
+                                       Text="No contacts found. Add a contact above or adjust your search."
+                                       Visibility="{Binding FilteredContacts.Count, Converter={StaticResource CountZeroToVis}}"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <!-- ============ HISTORY PAGE ============ -->
+                <Grid x:Name="HistoryPage" Visibility="{Binding IsHistoryPageVisible, Converter={StaticResource BoolToVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- toolbar -->
+                    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <RadioButton Style="{StaticResource ChipButton}" Content="All" GroupName="hf" IsChecked="True"
+                                             Command="{Binding HistoryFilterCommand}" CommandParameter="All" FontSize="12"/>
+                                <RadioButton Style="{StaticResource ChipButton}" Content="Missed" GroupName="hf"
+                                             Command="{Binding HistoryFilterCommand}" CommandParameter="Missed" FontSize="12"/>
+                                <RadioButton Style="{StaticResource ChipButton}" Content="Incoming" GroupName="hf"
+                                             Command="{Binding HistoryFilterCommand}" CommandParameter="Incoming" FontSize="12"/>
+                                <RadioButton Style="{StaticResource ChipButton}" Content="Outgoing" GroupName="hf"
+                                             Command="{Binding HistoryFilterCommand}" CommandParameter="Outgoing" FontSize="12"/>
+                            </StackPanel>
+                            <Grid Grid.Column="1" Margin="10,0">
+                                <TextBox Text="{Binding HistorySearch, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="34" Padding="32,4,10,4" FontSize="13"
+                                         VerticalContentAlignment="Center" ToolTip="Search by name or number"/>
+                                <Path Style="{StaticResource IconPath}" Height="14" Width="14" Data="{StaticResource IcoSearch}"
+                                      Stroke="{StaticResource TextDimBrush}" HorizontalAlignment="Left" Margin="10,0,0,0"
+                                      VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            </Grid>
+                            <Button Grid.Column="2" Style="{StaticResource IconButton}" VerticalAlignment="Center"
+                                    Command="{Binding ClearHistoryCommand}" ToolTip="Clear call history">
+                                <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoTrash}"
+                                      Stroke="{StaticResource ErrBrush}"/>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <!-- list -->
+                    <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="8">
+                        <Grid>
+                            <ListBox x:Name="HistoryList" ItemsSource="{Binding HistoryView}"
+                                     ItemContainerStyle="{StaticResource ContactItem}"
+                                     Background="Transparent" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     MouseDoubleClick="OnHistoryDoubleClick">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="44"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0" Width="34" Height="34" CornerRadius="17" HorizontalAlignment="Left"
+                                                    Background="{Binding DirBrushKey, Converter={StaticResource KeyToBrush}}">
+                                                <Path Style="{StaticResource IconPath}" Height="15" Width="15" Stroke="White"
+                                                      Data="{Binding DirIconKey, Converter={StaticResource KeyToGeo}}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                                                <TextBlock Text="{Binding Display}" FontSize="13.5" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="360">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsMissed}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource ErrBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                    <TextBlock Text="{Binding EventLabel}" FontSize="11.5">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource DimText}">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsMissed}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{StaticResource ErrBrush}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding Detail}" Style="{StaticResource DimText}" FontSize="11.5"
+                                                               Margin="6,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="220"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Time}" Style="{StaticResource DimText}" FontSize="11.5"
+                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <Button Style="{StaticResource IconButton}"
+                                                        Command="{Binding DataContext.RedialCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Call this number again">
+                                                    <Path Style="{StaticResource IconPath}" Height="15" Width="15" Data="{StaticResource IcoPhone}"
+                                                          Stroke="{StaticResource OkBrush}"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock Style="{StaticResource EmptyState}"
+                                       Text="No calls match this filter."
+                                       Visibility="{Binding HistoryEmpty, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <!-- ============ LOGS PAGE ============ -->
+                <Grid x:Name="LogsPage" Visibility="{Binding IsSystemLogsPageVisible, Converter={StaticResource BoolToVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- toolbar -->
+                    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <RadioButton Style="{StaticResource ChipButton}" Content="All" GroupName="lf" IsChecked="True"
+                                             Command="{Binding LogFilterCommand}" CommandParameter="All" FontSize="12"/>
+                                <RadioButton Style="{StaticResource ChipButton}" Content="Calls" GroupName="lf"
+                                             Command="{Binding LogFilterCommand}" CommandParameter="Calls" FontSize="12"/>
+                                <RadioButton Style="{StaticResource ChipButton}" Content="SIP" GroupName="lf"
+                                             Command="{Binding LogFilterCommand}" CommandParameter="SIP" FontSize="12"/>
+                                <RadioButton Style="{StaticResource ChipButton}" Content="Errors" GroupName="lf"
+                                             Command="{Binding LogFilterCommand}" CommandParameter="Errors" FontSize="12"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <ToggleButton Style="{StaticResource ToggleButton}" Padding="9,6" Margin="0,0,6,0"
+                                              IsChecked="{Binding LogPaused, Mode=TwoWay}"
+                                              ToolTip="Pause / resume log capture">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Style="{StaticResource IconPath}" Height="13" Width="13" Data="{StaticResource IcoPause}"
+                                              VerticalAlignment="Center"/>
+                                        <TextBlock Text="Pause" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                                    </StackPanel>
+                                </ToggleButton>
+                                <Button Style="{StaticResource IconButton}" Command="{Binding CopyLogCommand}"
+                                        ToolTip="Copy visible log lines to clipboard">
+                                    <Path Style="{StaticResource IconPath}" Height="14" Width="14" Data="{StaticResource IcoCopy}"/>
+                                </Button>
+                                <Button Style="{StaticResource IconButton}" Margin="6,0,0,0" Command="{Binding ClearLogCommand}"
+                                        ToolTip="Clear the log">
+                                    <Path Style="{StaticResource IconPath}" Height="14" Width="14" Data="{StaticResource IcoTrash}"
+                                          Stroke="{StaticResource ErrBrush}"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <!-- log list -->
+                    <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                            BorderThickness="1" CornerRadius="12" Padding="10">
+                        <ListBox ItemsSource="{Binding LogItemsView}" ItemContainerStyle="{StaticResource LogItem}"
+                                 Background="Transparent" BorderThickness="0"
+                                 HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Line}" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{Binding Brush}" TextWrapping="Wrap"/>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                    </StackPanel>
-                </ScrollViewer>
+                    </Border>
+                </Grid>
             </Grid>
 
-            <!-- ================= LOGS PAGE ================= -->
-            <Grid x:Name="LogsPage" Visibility="{Binding IsLogsPageVisible, Converter={StaticResource BoolToVis}}"
-                  Background="{StaticResource BgBrush}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+        </Grid>
 
-                <!-- Log type selector -->
-                <Border Grid.Row="0" Background="{StaticResource PanelBrush}" CornerRadius="16" Padding="16" Margin="0,0,0,12">
-                    <StackPanel>
-                        <!-- Tabs -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                            <Border Background="{StaticResource AccentBrush}" CornerRadius="8" Padding="16,8" Margin="0,0,8,0">
-                                <TextBlock Text="History" Foreground="White" FontWeight="SemiBold"/>
-                            </Border>
-                            <Border Background="{StaticResource PanelAltBrush}" CornerRadius="8" Padding="16,8" Margin="0,0,8,0">
-                                <TextBlock Text="Logs" Foreground="{StaticResource TextDimBrush}" FontSize="11"/>
-                            </Border>
-                        </StackPanel>
 
-                        <!-- History filters -->
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Style="{StaticResource ChipButton}" Content="All" GroupName="hf"
-                                         IsChecked="True" Command="{Binding HistoryFilterCommand}" CommandParameter="All" FontSize="11"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="Missed" GroupName="hf"
-                                         Command="{Binding HistoryFilterCommand}" CommandParameter="Missed" FontSize="11"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="In" GroupName="hf"
-                                         Command="{Binding HistoryFilterCommand}" CommandParameter="Incoming" FontSize="11"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="Out" GroupName="hf"
-                                         Command="{Binding HistoryFilterCommand}" CommandParameter="Outgoing" FontSize="11"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- History list -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <ListBox ItemsSource="{Binding HistoryView}" MouseDoubleClick="OnHistoryDoubleClick"
-                             Background="Transparent" BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,6">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Ellipse Width="30" Height="30" 
-                                                 Fill="{Binding DirectionIcon, Converter={StaticResource KeyToBrush}}" CornerRadius="15"
-                                                 Grid.Column="0" Margin="0,0,10,0"/>
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Display}" FontWeight="SemiBold" FontSize="13"/>
-                                            <TextBlock Text="{Binding Time}" Style="{StaticResource DimText}" FontSize="11"/>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{Binding Event}" Style="{StaticResource DimText}" FontSize="11" TextWrapping="Wrap" MaxWidth="80"/>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
-            </Grid>
-
-            <!-- ================= CALL HISTORY / LOGS SEPARATE ================= -->
-            <Grid x:Name="HistoryPage" Visibility="{Binding IsHistoryPageVisible, Converter={StaticResource BoolToVis}}"
-                  Background="{StaticResource BgBrush}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- Search + Controls -->
-                <Border Grid.Row="0" Background="{StaticResource PanelBrush}" CornerRadius="16" Padding="16" Margin="0,0,0,12">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" Text="{Binding HistorySearch, UpdateSourceTrigger=PropertyChanged}"
-                                 Height="36" Padding="12,8" FontSize="14" VerticalContentAlignment="Center"/>
-                        <Button Grid.Column="1" Content="🗑" Padding="12,8" Margin="8,0,0,0"
-                                Command="{Binding ClearHistoryCommand}" ToolTip="Clear history"/>
-                    </Grid>
-                </Border>
-
-                <!-- History list -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <ListBox ItemsSource="{Binding HistoryView}" MouseDoubleClick="OnHistoryDoubleClick"
-                             Background="Transparent" BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,6">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Ellipse Width="36" Height="36" 
-                                                 Fill="{Binding DirectionIcon, Converter={StaticResource KeyToBrush}}" CornerRadius="18"
-                                                 Grid.Column="0" Margin="0,0,12,0"/>
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Display}" FontWeight="SemiBold" FontSize="14"/>
-                                            <TextBlock Text="{Binding Time}" Style="{StaticResource DimText}" FontSize="12"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Event}" Style="{StaticResource DimText}" FontSize="11"/>
-                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource DimText}" FontSize="10" Foreground="{StaticResource TextDimBrush}"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
-            </Grid>
-
-            <!-- ================= SYSTEM LOGS ================= -->
-            <Grid x:Name="SystemLogsPage" Visibility="{Binding IsSystemLogsPageVisible, Converter={StaticResource BoolToVis}}"
-                  Background="{StaticResource BgBrush}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- Log controls -->
-                <Border Grid.Row="0" Background="{StaticResource PanelBrush}" CornerRadius="16" Padding="16" Margin="0,0,0,12">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal">
-                            <TextBlock Text="LOG" Style="{StaticResource DimText}" FontSize="11" VerticalAlignment="Center"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="All" GroupName="lf"
-                                         IsChecked="True" Command="{Binding LogFilterCommand}" CommandParameter="All" FontSize="11" Margin="8,0,0,0"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="Calls" GroupName="lf"
-                                         Command="{Binding LogFilterCommand}" CommandParameter="Calls" FontSize="11"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="SIP" GroupName="lf"
-                                         Command="{Binding LogFilterCommand}" CommandParameter="SIP" FontSize="11"/>
-                            <RadioButton Style="{StaticResource ChipButton}" Content="Errors" GroupName="lf"
-                                         Command="{Binding LogFilterCommand}" CommandParameter="Errors" FontSize="11"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <ToggleButton Style="{StaticResource ToggleButton}" Padding="10,6" FontSize="11"
-                                          IsChecked="{Binding LogPaused, Mode=TwoWay}"
-                                          Command="{Binding ToggleLogPauseCommand}"
-                                          ToolTip="Pause log">
-                                <TextBlock Text="⏸" FontSize="11"/>
-                            </ToggleButton>
-                            <Button Content="Copy" Padding="10,6" FontSize="11" Margin="6,0,0,0"
-                                    Command="{Binding CopyLogCommand}"/>
-                            <Button Content="Clear" Padding="10,6" FontSize="11" Margin="6,0,0,0"
-                                    Command="{Binding ClearLogCommand}"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- Log list -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <ListBox ItemsSource="{Binding LogItemsView}"
-                             Background="Transparent" BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="10" Margin="0,0,0,4">
-                                    <TextBlock Text="{Binding Line}" FontFamily="Consolas" FontSize="10"
-                                               Foreground="{Binding Brush}" TextWrapping="WrapWithOverflow"/>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
-            </Grid>
-
-        </Border>
-
-        <!-- Bottom Navigation Bar -->
-        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="20,20,0,0" Padding="16,12" Margin="0,-12,0,0">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Calls Tab -->
-                <Button Grid.Column="0" Content="📞" Style="{StaticResource TabButton}"
-                        Command="{Binding SetCallsPageCommand}"
-                        ToolTip="Calls &amp; Dial"/>
-                
-                <!-- Contacts Tab -->
-                <Button Grid.Column="1" Content=" contacts" Style="{StaticResource TabButton}"
-                        Command="{Binding SetContactsPageCommand}"
-                        ToolTip="Contacts"/>
-                
-                <!-- History Tab -->
-                <Button Grid.Column="2" Content="📋 history" Style="{StaticResource TabButton}"
-                        Command="{Binding SetHistoryPageCommand}"
-                        ToolTip="Call History"/>
-                
-                <!-- Logs Tab -->
-                <Button Grid.Column="3" Content="📝 logs" Style="{StaticResource TabButton}"
-                        Command="{Binding SetSystemLogsPageCommand}"
-                        ToolTip="System Logs"/>
-            </Grid>
-        </Border>
-
-        <!-- Indicator dots for active page -->
-        <Canvas Grid.Row="1" Height="6" VerticalAlignment="Top" Canvas.Top="-8" HorizontalAlignment="Center">
-            <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}" Canvas.Left="0" Opacity="1"/>
-            <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}" Canvas.Left="94" Opacity="{Binding IsContactsPageVisible, Converter={StaticResource BoolToVis}}"/>
-            <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}" Canvas.Left="188" Opacity="{Binding IsHistoryPageVisible, Converter={StaticResource BoolToVis}}"/>
-            <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}" Canvas.Left="282" Opacity="{Binding IsSystemLogsPageVisible, Converter={StaticResource BoolToVis}}"/>
-        </Canvas>
     </Grid>
 </Window>

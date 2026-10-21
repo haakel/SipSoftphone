@@ -16,6 +16,41 @@ public sealed class HistoryItem
     public string Event { get; init; } = "";
     public string Detail { get; init; } = "";
     public string Display => string.IsNullOrWhiteSpace(Name) ? Phone : $"{Name} ({Phone})";
+
+    /// <summary>Missed incoming calls (no answer / caller hung up before answer) — shown in red.</summary>
+    public bool IsMissed => Event is "call_ring_timeout" or "call_cancelled";
+
+    /// <summary>Human-readable call outcome label.</summary>
+    public string EventLabel => Event switch
+    {
+        "call_outgoing" => "Outgoing",
+        "call_received" => "Incoming",
+        "call_rejected" => "Declined",
+        "call_ring_timeout" => "Missed",
+        "call_cancelled" => "Missed",
+        "call_answered" => "Answered",
+        "call_ended" => "Ended",
+        "call_failed" => "Failed",
+        "call_transfer" => "Transfer",
+        "registration" => "Registration",
+        _ => Event
+    };
+
+    /// <summary>Brush resource key for the direction chip (red for missed, green for outgoing, …).</summary>
+    public string DirBrushKey => Direction switch
+    {
+        "IN" => IsMissed ? "RedBrush" : "AccentBrush",
+        "OUT" => "OkBrush",
+        _ => "GrayButtonBrush"
+    };
+
+    /// <summary>Vector icon resource key for the direction arrow ("" when unknown).</summary>
+    public string DirIconKey => Direction switch
+    {
+        "IN" => "IcoArrowDownLeft",
+        "OUT" => "IcoArrowUpRight",
+        _ => ""
+    };
 }
 
 public sealed class LogItem
@@ -40,7 +75,7 @@ public static class LogBrushes
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private readonly AppConfig _config;
-    private readonly PhoneEngine _engine;
+    private readonly ICallService _engine;
     private readonly ContactsBook _contacts;
     private readonly RingtonePlayer _ringtone = new();
     private readonly Dispatcher _dispatcher;
@@ -49,7 +84,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public event Action<string, string?>? IncomingCallAlert;
 
-    public MainViewModel(AppConfig config, PhoneEngine engine, Dispatcher dispatcher)
+    public MainViewModel(AppConfig config, ICallService engine, Dispatcher dispatcher)
     {
         _config = config;
         _engine = engine;
@@ -235,7 +270,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     // ================= call state =================
 
     private string _displayNameText = "—";
-    public string DisplayNameText { get => _displayNameText; set => Set(ref _displayNameText, value); }
+    public string DisplayNameText
+    {
+        get => _displayNameText;
+        set { if (Set(ref _displayNameText, value)) OnPropertyChanged(nameof(CallerInitials)); }
+    }
 
     private string _normalizedText = "";
     public string NormalizedText { get => _normalizedText; set => Set(ref _normalizedText, value); }
@@ -244,7 +283,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string RawNumberText { get => _rawNumberText; set => Set(ref _rawNumberText, value); }
 
     private string _stateText = "Idle";
-    public string StateText { get => _stateText; set => Set(ref _stateText, value); }
+    public string StateText
+    {
+        get => _stateText;
+        set { if (Set(ref _stateText, value)) OnPropertyChanged(nameof(EndCallLabel)); }
+    }
 
     private string _durationText = "";
     public string DurationText { get => _durationText; set => Set(ref _durationText, value); }
@@ -258,10 +301,38 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsRinging => CallStateKey == "Ringing";
     public bool IsActive => CallStateKey == "Active";
-    
+    public bool IsIdle => CallStateKey == "Idle";
+    public bool IsEnded => CallStateKey == "Ended";
+    /// <summary>True when the last call attempt failed (rejected / unreachable / transport error).</summary>
+    public bool IsFailed => CallStateKey == "Failed";
+    /// <summary>True while a call is ringing or connected — drives the compact call banner.</summary>
+    public bool IsOngoingCall => CallStateKey is "Ringing" or "Active";
+
     // Helper properties for visibility binding
     public bool IsIncoming => CallStateKey == "Ringing" && StateText.Contains("incoming");
     public bool IsCallActive => CallStateKey == "Active" || CallStateKey == "Ended";
+    /// <summary>Banner answer action — only for incoming calls.</summary>
+    public bool ShowBannerAnswer => IsIncoming;
+    /// <summary>Banner end action — cancels an outgoing call or ends a connected one.</summary>
+    public bool ShowBannerEnd => IsOngoingCall && !IsIncoming;
+    /// <summary>End-call button label: "Cancel" while dialing/ringing out, "End Call" while connected.</summary>
+    public string EndCallLabel => StateText.StartsWith("Calling", StringComparison.Ordinal) ? "Cancel" : "End Call";
+    /// <summary>Initials of the remote party; empty for unnamed / number-only calls.</summary>
+    public string CallerInitials
+    {
+        get
+        {
+            var name = DisplayNameText?.Trim() ?? "";
+            if (name.Length == 0 || name == "—" || !name.Any(char.IsLetter)) return "";
+            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return parts.Length switch
+            {
+                0 => "",
+                1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+                _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
+            };
+        }
+    }
 
     private bool _muteChecked;
     public bool MuteChecked
@@ -271,7 +342,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (Set(ref _muteChecked, value))
             {
-                _engine.Audio.SetMuted(value);
+                _engine.SetMicrophoneMuted(value);
                 OnPropertyChanged(nameof(MuteLabel));
             }
         }
@@ -286,12 +357,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (Set(ref _holdChecked, value))
             {
-                _ = value ? _engine.Hold() : _engine.Resume();
+                if (value) _engine.Hold(); else _engine.Resume();
                 OnPropertyChanged(nameof(HoldLabel));
             }
         }
     }
     public string HoldLabel => HoldChecked ? "Resume" : "Hold";
+
+    private bool _keypadOpen = true;
+    /// <summary>Visibility of the dial-pad column — toggled from the in-call controls.</summary>
+    public bool KeypadOpen { get => _keypadOpen; set => Set(ref _keypadOpen, value); }
 
     // Hold command for UI binding
     public RelayCommand HoldCommand => new RelayCommand(() =>
@@ -307,6 +382,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private string _transferStatus = "";
     public string TransferStatus { get => _transferStatus; set => Set(ref _transferStatus, value); }
+
+    /// <summary>Re-raises every state-derived property (used by call-state and failure transitions).</summary>
+    private void RaiseCallFlags()
+    {
+        OnPropertyChanged(nameof(CallStateKey));
+        OnPropertyChanged(nameof(StateText));
+        OnPropertyChanged(nameof(IsRinging));
+        OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(IsIdle));
+        OnPropertyChanged(nameof(IsEnded));
+        OnPropertyChanged(nameof(IsFailed));
+        OnPropertyChanged(nameof(IsOngoingCall));
+        OnPropertyChanged(nameof(IsIncoming));
+        OnPropertyChanged(nameof(IsCallActive));
+        OnPropertyChanged(nameof(ShowBannerAnswer));
+        OnPropertyChanged(nameof(ShowBannerEnd));
+        OnPropertyChanged(nameof(EndCallLabel));
+        OnPropertyChanged(nameof(CallerInitials));
+    }
 
     private void OnCallChanged(CallSnapshot call) => _dispatcher.BeginInvoke(() => ApplyCallState(call));
 
@@ -336,11 +430,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             CallState.Ended => "Ended",
             _ => "Idle"
         };
-        OnPropertyChanged(nameof(IsRinging));
-        OnPropertyChanged(nameof(IsActive));
+        RaiseCallFlags();
 
         HoldChecked = call.IsOnHold;
-        if (call.State != CallState.Active) { MuteChecked = false; TransferPanelOpen = false; TransferStatus = ""; }
+        if (call.State != CallState.Active)
+        {
+            MuteChecked = false;
+            TransferPanelOpen = false;
+            TransferStatus = "";
+            KeypadOpen = true; // restore the dial pad once the call is over
+        }
 
         if (call.State == CallState.Active) _tickTimer.Start();
         else { _tickTimer.Stop(); UpdateDuration(call); }
@@ -384,6 +483,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (Set(ref _dialText, value))
             {
+                // typing a new number clears a previous "Failed" result
+                if (CallStateKey == "Failed") ApplyCallState(_engine.CurrentCall);
                 DialNormText = value.Length > 0 ? "→ " + PhoneNormalizer.Normalize(value) : "";
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested();
             }
@@ -402,6 +503,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand HangupCommand { get; private set; } = null!;
     public AsyncRelayCommand CallCommand { get; private set; } = null!;
     public AsyncRelayCommand PadCommand { get; private set; } = null!;
+    public RelayCommand BackspaceDialCommand { get; private set; } = null!;
+    public RelayCommand ClearDialCommand { get; private set; } = null!;
     public RelayCommand ToggleMuteCommand { get; private set; } = null!;
     public RelayCommand ToggleHoldCommand { get; private set; } = null!;
     public AsyncRelayCommand TransferConfirmCommand { get; private set; } = null!;
@@ -428,15 +531,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string HistoryFilter
     {
         get => _historyFilter;
-        set { if (Set(ref _historyFilter, value)) HistoryView?.Refresh(); }
+        set { if (Set(ref _historyFilter, value)) { HistoryView?.Refresh(); RaiseHistoryEmpty(); } }
     }
 
     private string _historySearch = "";
     public string HistorySearch
     {
         get => _historySearch;
-        set { if (Set(ref _historySearch, value)) HistoryView?.Refresh(); }
+        set { if (Set(ref _historySearch, value)) { HistoryView?.Refresh(); RaiseHistoryEmpty(); } }
     }
+
+    /// <summary>True when the (filtered) history list has no rows — drives the empty-state hint.</summary>
+    public bool HistoryEmpty => HistoryView?.IsEmpty ?? History.Count == 0;
+
+    private void RaiseHistoryEmpty() => OnPropertyChanged(nameof(HistoryEmpty));
 
     private static readonly string[] MissedEvents = { "call_ring_timeout", "call_cancelled" };
     private static readonly string[] IncomingEvents = { "call_received", "call_cancelled", "call_ring_timeout", "call_rejected" };
@@ -459,6 +567,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
     }
 
+    /// <summary>Direction of the call currently being logged — inherited by answered/ended/failed rows.</summary>
+    private string _lastDirection = "";
+
     private void OnBusEvent(CallEvent ev) => _dispatcher.BeginInvoke(() =>
     {
         var dir = ev.Event switch
@@ -467,9 +578,33 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             "call_received" or "call_cancelled" or "call_ring_timeout" or "call_rejected" => "IN",
             _ => ""
         };
+        if (dir.Length > 0) _lastDirection = dir;
+        else dir = _lastDirection;   // answered / ended / failed / transfer belong to the call that just ran
+
         var icon = dir switch { "IN" => "↙", "OUT" => "↗", _ => "" };
         var t = DateTime.TryParse(ev.Ts, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
             ? dt.ToLocalTime() : DateTime.Now;
+
+        // talk time for the history row (timestamp + duration are both required by the UI spec)
+        var detail = ev.Detail;
+        if (ev.Event == "call_ended")
+        {
+            var c = _engine.CurrentCall;
+            if (c.AnsweredAt != null && c.EndedAt != null && c.EndedAt.Value >= c.AnsweredAt.Value)
+            {
+                var d = c.EndedAt.Value - c.AnsweredAt.Value;
+                detail = "talk " + (d.TotalHours >= 1 ? d.ToString(@"h\:mm\:ss") : d.ToString(@"mm\:ss"));
+            }
+        }
+
+        // failed call → explicit red "Failed" state in the call panel (spec state list)
+        if (ev.Event == "call_failed")
+        {
+            CallStateKey = "Failed";
+            StateText = "Failed";
+            RaiseCallFlags();
+        }
+
         History.Insert(0, new HistoryItem
         {
             Time = t.ToString("MM/dd HH:mm:ss"),
@@ -478,9 +613,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Phone = ev.Phone,
             Name = ev.Name ?? "",
             Event = ev.Event,
-            Detail = ev.Detail
+            Detail = detail
         });
         while (History.Count > 300) History.RemoveAt(History.Count - 1);
+        RaiseHistoryEmpty();
     });
 
     public void LoadHistoryFromFile()
@@ -529,6 +665,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
             foreach (var row in rows.TakeLast(200).Reverse())
                 History.Add(row);
+            RaiseHistoryEmpty();
         }
         catch (Exception ex) { AppendLog($"[ui] history load failed: {ex.Message}", "error"); }
     }
@@ -656,7 +793,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             AppendLog("[ui] engine failed to start — see log above", "error");
             return false;
         }
-        if (_engine.Bus != null) _engine.Bus.Emitted += OnBusEvent;
+        // Bus.Emitted is already subscribed in the constructor — re-subscribing here
+        // would duplicate every history row.
         LoadHistoryFromFile();
         RebuildFilteredContacts();
         return true;
@@ -682,6 +820,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (IsActive) { await _engine.SendDtmfAsync(ch[0]); return; }
             DialText += ch;
         });
+        BackspaceDialCommand = new RelayCommand(() =>
+        {
+            if (DialText.Length > 0) DialText = DialText[..^1];
+        });
+        ClearDialCommand = new RelayCommand(() => DialText = "");
         ToggleMuteCommand = new RelayCommand(() => MuteChecked = !MuteChecked,
             () => _engine.CurrentCall.State == CallState.Active);
         ToggleHoldCommand = new RelayCommand(() =>
@@ -755,9 +898,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         LogFilterCommand = new RelayCommand(p => LogFilter = p as string ?? "All");
     }
 
-    private void ClearHistory()
+    public void ClearHistory()
     {
         History.Clear();
+        RaiseHistoryEmpty();
         AppendLog("[history] cleared", "ok");
     }
 

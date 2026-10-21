@@ -15,6 +15,7 @@ public static class Program
     {
         var selftest = args.Contains("--selftest");
         var headless = args.Contains("--headless");
+        var demo = args.Contains("--demo");
         var configPath = args.FirstOrDefault(a => !a.StartsWith("--"));
 
         if (selftest || headless)
@@ -39,6 +40,17 @@ public static class Program
         var config = AppConfig.Load(configPath);
         var app = new App();
         app.InitializeComponent();
+
+        if (demo)
+        {
+            // demo mode: UI + mock call service, no SIP/audio traffic.
+            // Uses an isolated copy of the config so the real one is never modified.
+            var demoCfg = config.Clone();
+            demoCfg.Hook.SseEnabled = false;
+            demoCfg.Hook.LogFile = Path.Combine(Path.GetTempPath(), "sipsoftphone-demo-history.jsonl");
+            return app.Run(new MainWindow(demoCfg, new MockCallService()));
+        }
+
         return app.Run(new MainWindow(config));
     }
 

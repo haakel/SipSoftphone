@@ -32,7 +32,7 @@ public sealed record RegistrationStatus(bool Configured, bool IsOk, string Text,
 /// hold, blind transfer, DTMF, manual register/unregister, TCP/TLS, restart.
 /// UI-safe: all public methods are thread-safe; events may fire on background threads.
 /// </summary>
-public sealed class PhoneEngine : IDisposable
+public sealed class PhoneEngine : ICallService
 {
     private readonly AppConfig _config;
     private readonly AudioEngine _audio = new();
@@ -496,6 +496,9 @@ public sealed class PhoneEngine : IDisposable
     }
 
     /// <summary>Puts the remote party on hold (re-INVITE sendonly) and mutes the mic.</summary>
+    /// <summary>Microphone mute — UI-facing wrapper around the audio engine.</summary>
+    public void SetMicrophoneMuted(bool isMuted) => _audio.SetMuted(isMuted);
+
     public void Hold()
     {
         SIPUserAgent? ua;
