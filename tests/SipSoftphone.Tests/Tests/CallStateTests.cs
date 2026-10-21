@@ -1,66 +1,176 @@
+using System;
+using System.Threading.Tasks;
 using Xunit;
 using SipSoftphone;
 
 namespace SipSoftphone.Tests;
 
+/// <summary>
+/// Headless call-state tests driving the real <see cref="MockCallService"/>
+/// through <see cref="MainViewModel"/>. No window, no SIP traffic.
+/// </summary>
 public class CallStateTests
 {
-    [Fact]
-    public void MockCallService_InitialState_IsIdle()
+    private static (MainViewModel Vm, MockCallService Svc) NewVm()
     {
-        var config = new AppConfig();
         var svc = new MockCallService();
-        var vm = new MainViewModel(config, svc, null);
-        // Access call state through the engine field that MainViewModel uses internally
-        var engine = (vm.GetType().GetField("_engine")!.GetValue(vm) as dynamic)!;
-        var call = engine.CurrentCall;
-        Assert.Equal(CallState.Idle, call.State);
+        var vm = new MainViewModel(new AppConfig(), svc, null!);
+        return (vm, svc);
     }
 
     [Fact]
-    public void MockCallService_Dial_TransitionsToOutgoingRinging()
+    public void Initial_CallState_IsIdle()
     {
-        var config = new AppConfig();
-        var svc = new MockCallService();
-        var vm = new MainViewModel(config, svc, null);
-        var task = svc.CallAsync("9121234567");
-        Assert.True(task.Result);
-        var engine = (vm.GetType().GetField("_engine")!.GetValue(vm) as dynamic)!;
-        var call = engine.CurrentCall;
-        Assert.Equal(CallState.OutgoingRinging, call.State);
+        var (_, svc) = NewVm();
+        Assert.Equal(CallState.Idle, svc.CurrentCall.State);
     }
 
     [Fact]
-    public void MockCallService_Hold_WorksOnActiveCall()
+    public void Initial_ViewModel_HasNoActiveCall()
     {
-        var config = new AppConfig();
-        var svc = new MockCallService();
-        var vm = new MainViewModel(config, svc, null);
-        _ = svc.CallAsync("9121234567"); // OutgoingRinging → Active after 2.5s
-        var engine = (vm.GetType().GetField("_engine")!.GetValue(vm) as dynamic)!;
-        var call = engine.CurrentCall;
-        // After delay call becomes Active; hold should toggle
-        if (call.State == CallState.Active || call.State == CallState.OutgoingRinging)
-        {
-            vm.GetType().GetMethod("ToggleHoldCommand")!.Invoke(vm, null);
-        }
-        Assert.True(true); // just verify no throw
+        var (vm, _) = NewVm();
+        Assert.False(vm.IsIncoming);
+        Assert.Null(vm.SelectedContact);
     }
 
     [Fact]
-    public void MockCallService_HoldSetsIsOnHold()
+    public async Task Dial_Transitions_Idle_To_OutgoingRinging()
     {
-        var config = new AppConfig();
-        var svc = new MockCallService();
-        var vm = new MainViewModel(config, svc, null);
-        _ = svc.CallAsync("9121234567");
-        var engine = (vm.GetType().GetField("_engine")!.GetValue(vm) as dynamic)!;
-        var call = engine.CurrentCall;
-        if (call.State == CallState.Active)
-        {
-            vm.GetType().GetMethod("ToggleHoldCommand")!.Invoke(vm, null); // hold
-            vm.GetType().GetMethod("ToggleHoldCommand")!.Invoke(vm, null); // resume
-        }
-        Assert.True(true); // just verify no throw
+        var (_, svc) = NewVm();
+        var ok = await svc.CallAsync("9121234567");
+        Assert.True(ok);
+        Assert.Equal(CallState.OutgoingRinging, svc.CurrentCall.State);
+    }
+
+    [Fact]
+    public async Task Dial_While_Busy_Is_Rejected()
+    {
+        var (_, svc) = NewVm();
+        Assert.True(await svc.CallAsync("9121234567"));
+        Assert.False(await svc.CallAsync("9129999999"));
+        Assert.Equal(CallState.OutgoingRinging, svc.CurrentCall.State);
+    }
+
+    [Fact]
+    public async Task Call_Reaches_Active_After_Answer_Delay()
+    {
+        var (_, svc) = NewVm();
+        await svc.CallAsync("9121234567");
+        Assert.Equal(CallState.OutgoingRinging, svc.CurrentCall.State);
+
+        await Task.Delay(3200);
+
+        Assert.Equal(CallState.Active, svc.CurrentCall.State);
+        Assert.False(svc.CurrentCall.IsOnHold);
+    }
+
+    [Fact]
+    public async Task Hangup_Ends_Active_Call()
+    {
+        var (_, svc) = NewVm();
+        await svc.CallAsync("9121234567");
+        await Task.Delay(3200);
+        Assert.Equal(CallState.Active, svc.CurrentCall.State);
+
+        svc.Hangup();
+
+        Assert.Equal(CallState.Ended, svc.CurrentCall.State);
+        Assert.False(svc.CurrentCall.IsOnHold);
+    }
+
+    [Fact]
+    public void Hold_Only_Applies_To_Active_Call()
+    {
+        var (_, svc) = NewVm();
+        svc.Hold();
+        Assert.False(svc.CurrentCall.IsOnHold);
+    }
+
+    [Fact]
+    public async Task ToggleHold_Flips_IsOnHold_On_Active_Call()
+    {
+        var (_, svc) = NewVm();
+        await svc.CallAsync("9121234567");
+        await Task.Delay(3200);
+        Assert.Equal(CallState.Active, svc.CurrentCall.State);
+
+        Assert.True(svc.ToggleHold());
+        Assert.True(svc.CurrentCall.IsOnHold);
+
+        Assert.False(svc.ToggleHold());
+        Assert.False(svc.CurrentCall.IsOnHold);
+    }
+
+    [Fact]
+    public async Task Resume_Clears_IsOnHold()
+    {
+        var (_, svc) = NewVm();
+        await svc.CallAsync("9121234567");
+        await Task.Delay(3200);
+
+        svc.Hold();
+        Assert.True(svc.CurrentCall.IsOnHold);
+
+        svc.Resume();
+        Assert.False(svc.CurrentCall.IsOnHold);
+    }
+
+    [Fact]
+    public void RejectPending_Ignored_When_No_Incoming_Call()
+    {
+        var (_, svc) = NewVm();
+        svc.RejectPending();
+        Assert.Equal(CallState.Idle, svc.CurrentCall.State);
+    }
+
+    [Fact]
+    public void RejectPending_Clears_Incoming_Call()
+    {
+        var (_, svc) = NewVm();
+        svc.SimulateIncoming("09123456789", "Demo Caller");
+        Assert.Equal(CallState.IncomingRinging, svc.CurrentCall.State);
+
+        svc.RejectPending();
+
+        Assert.Equal(CallState.Idle, svc.CurrentCall.State);
+    }
+
+    [Fact]
+    public async Task AnswerPending_Activates_Incoming_Call()
+    {
+        var (_, svc) = NewVm();
+        svc.SimulateIncoming("09123456789", "Demo Caller");
+        Assert.Equal(CallState.IncomingRinging, svc.CurrentCall.State);
+
+        await svc.AnswerPendingAsync();
+
+        Assert.Equal(CallState.Active, svc.CurrentCall.State);
+    }
+
+    [Fact]
+    public void SetMicrophoneMuted_Does_Not_Throw()
+    {
+        var (_, svc) = NewVm();
+        svc.SetMicrophoneMuted(true);
+        svc.SetMicrophoneMuted(false);
+    }
+
+    [Fact]
+    public async Task BlindTransfer_Fails_When_Call_Not_Active()
+    {
+        var (_, svc) = NewVm();
+        Assert.False(await svc.BlindTransferAsync("9125550123"));
+    }
+
+    [Fact]
+    public async Task BlindTransfer_Succeeds_And_Ends_Call()
+    {
+        var (_, svc) = NewVm();
+        await svc.CallAsync("9121234567");
+        await Task.Delay(3200);
+        Assert.Equal(CallState.Active, svc.CurrentCall.State);
+
+        Assert.True(await svc.BlindTransferAsync("9125550123"));
+        Assert.Equal(CallState.Ended, svc.CurrentCall.State);
     }
 }

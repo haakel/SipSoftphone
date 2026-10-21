@@ -78,9 +78,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ICallService _engine;
     private readonly ContactsBook _contacts;
     private readonly RingtonePlayer _ringtone = new();
-    private readonly Dispatcher _dispatcher;
+    private readonly Dispatcher? _dispatcher;
     private readonly DispatcherTimer _tickTimer;
     private bool _disposed;
+
+    /// <summary>
+    /// Marshals <paramref name="action"/> onto the UI thread. When no dispatcher is
+    /// available (headless/self-test/console runs) the action runs inline, so the
+    /// view model stays usable without a WPF message loop.
+    /// </summary>
+    private void Post(Action action)
+    {
+        var d = _dispatcher;
+        if (d is null) { action(); return; }
+        _ = d.BeginInvoke(action);
+    }
 
     public event Action<string, string?>? IncomingCallAlert;
 
@@ -100,11 +112,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _engine.IncomingAlert += OnIncomingAlert;
         if (_engine.Bus != null) _engine.Bus.Emitted += OnBusEvent;
 
-        HistoryView = CollectionViewSource.GetDefaultView(History);
-        HistoryView.Filter = FilterHistory;
+        // The default collection views belong to the UI thread's dispatcher. Without a
+        // dispatcher (headless runs) they reject mutations arriving from another thread,
+        // so the plain observable collections stand on their own instead.
+        if (_dispatcher is not null)
+        {
+            HistoryView = CollectionViewSource.GetDefaultView(History);
+            HistoryView.Filter = FilterHistory;
 
-        LogItemsView = CollectionViewSource.GetDefaultView(LogItems);
-        LogItemsView.Filter = FilterLog;
+            LogItemsView = CollectionViewSource.GetDefaultView(LogItems);
+            LogItemsView.Filter = FilterLog;
+        }
 
         foreach (var a in _config.Sip.Accounts) Accounts.Add(a);
         _selectedAccountIndex = Math.Clamp(_config.Sip.ActiveAccountIndex, 0, Math.Max(0, Accounts.Count - 1));
@@ -150,7 +168,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             acc.CopyTo(_config.Sip);
             _config.Sip.ActiveAccountIndex = value;
             try { _config.Save(); } catch { }
-            _ = _dispatcher.BeginInvoke(() =>
+            Post(() =>
             {
                 AppendLog($"[sip] switched to account {acc}", "sip");
                 _engine.Restart();
@@ -237,7 +255,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private static string RegDotKeyFor(RegistrationStatus s)
         => s.IsOk ? "OkBrush" : s.Configured ? "ErrBrush" : "TextDimBrush";
 
-    private void OnRegChanged(RegistrationStatus status) => _dispatcher.BeginInvoke(() =>
+    private void OnRegChanged(RegistrationStatus status) => Post(() =>
     {
         RegText = status.Text;
         RegDotBrushKey = RegDotKeyFor(status);
@@ -402,7 +420,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CallerInitials));
     }
 
-    private void OnCallChanged(CallSnapshot call) => _dispatcher.BeginInvoke(() => ApplyCallState(call));
+    private void OnCallChanged(CallSnapshot call) => Post(() => ApplyCallState(call));
 
     private void ApplyCallState(CallSnapshot call)
     {
@@ -466,7 +484,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OnIncomingAlert(string from, string? name)
     {
-        _dispatcher.BeginInvoke(() =>
+        Post(() =>
         {
             _ringtone.Play(_config.Audio.RingtonePath);
             IncomingCallAlert?.Invoke(from, name);
@@ -525,7 +543,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     // ================= history =================
 
     public ObservableCollection<HistoryItem> History { get; } = new();
-    public ICollectionView HistoryView { get; }
+    public ICollectionView? HistoryView { get; }
 
     private string _historyFilter = "All";
     public string HistoryFilter
@@ -570,7 +588,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Direction of the call currently being logged — inherited by answered/ended/failed rows.</summary>
     private string _lastDirection = "";
 
-    private void OnBusEvent(CallEvent ev) => _dispatcher.BeginInvoke(() =>
+    private void OnBusEvent(CallEvent ev) => Post(() =>
     {
         var dir = ev.Event switch
         {
@@ -673,7 +691,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     // ================= log =================
 
     public ObservableCollection<LogItem> LogItems { get; } = new();
-    public ICollectionView LogItemsView { get; }
+    public ICollectionView? LogItemsView { get; }
 
     private bool _logPaused;
     public bool LogPaused { get => _logPaused; set => Set(ref _logPaused, value); }
@@ -698,7 +716,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
     }
 
-    private void OnEngineLog(string msg) => _dispatcher.BeginInvoke(() => AppendLog(msg));
+    private void OnEngineLog(string msg) => Post(() => AppendLog(msg));
 
     public void AppendLog(string msg, string? kindOverride = null)
     {
